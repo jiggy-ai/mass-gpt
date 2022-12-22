@@ -5,9 +5,9 @@ from sqlmodel import create_engine, SQLModel
 
 
 # DB Config
-db_host = os.environ['JIGGY_POSTGRES_HOST']
-user = os.environ['JIGGY_POSTGRES_USER']
-passwd = os.environ['JIGGY_POSTGRES_PASS']
+db_host = os.environ['MASSGPT_POSTGRES_HOST']
+user = os.environ['MASSGPT_POSTGRES_USER']
+passwd = os.environ['MASSGPT_POSTGRES_PASS']
 
 DBURI = 'postgresql+psycopg2://%s:%s@%s:5432/massgpt' % (user, passwd, db_host)
 
