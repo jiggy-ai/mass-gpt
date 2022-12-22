@@ -43,19 +43,19 @@ class User(SQLModel, table=True):
                     telegram_lanuage_code = user.language_code)
     
 
+    
 class Message(SQLModel, table=True):
     id:               int           = Field(primary_key=True, description='Our unique message id')
     text:             str           = Field(max_length=4096, description='The message text')
-    telegram_chat_id: Optional[int] = Field(description='The chat if from a telegram chat')
     user_id:          int           = Field(index=True, foreign_key='user.id', description='The user who sent the Message')
     created_at:       timestamp     = Field(index=True, default_factory=time, description='The epoch timestamp when the Message was created.')
     
     @classmethod
     def from_telegram_update(cls, update: telegram.Update, user : User) -> "Message":
         logger.info(f"Message from {user.id} {user.first_name} {user.last_name}: {update.message.text}")
-        return Message(text=update.message.text, user_id=user.id, telegram_chat_id=update.message.chat.id)
-
-
+        return Message(text=update.message.text, user_id=user.id)
+    
+    
 
     
 class URL(SQLModel, table=True):

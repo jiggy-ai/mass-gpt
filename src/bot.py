@@ -334,12 +334,13 @@ def summarize_url(update: Update) -> None:
     # log UrlSummary to db
     with Session(engine) as session:
         session.add(UrlSummary(text_id = urltext.id,
+                               user_id = user.id,
                                model   = OPENAI_ENGINE,
                                prefix  = prefix,
                                summary = response))
         session.commit()
 
-    # add the summary to recent context
+    # add the summary to recent context    
     context.add(SubPrompt.from_summary(user=user, text=response))
 
     logger.info(response)
@@ -377,7 +378,18 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     
 bot.add_handler(MessageHandler(filters.COMMAND, command))
 
- 
+
+def load_context_from_db():
+    logger.info('load_context_from_db')    
+    with Session(engine) as session:
+        for msg in session.exec(select(Message).order_by(Message.id.desc())):
+            context.add(SubPrompt.from_msg(msg))
+            if context.tokens > MAX_CONTEXT_TOKENS - MAX_SUBPROMPT_TOKENS:
+                break
+                    
+    
+
+load_context_from_db()
 
 logger.info("run_polling")
 bot.run_polling()
