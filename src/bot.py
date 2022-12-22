@@ -3,6 +3,8 @@ MassGPT
 
 A destructive distillation of mass communication.
 
+Condition an LLM completion on a dynamically assembled subprompt context.
+
 Telegram: @MassGPTbot
 https://t.me/MassGPTbot
 
@@ -36,7 +38,8 @@ PREPROMPT  += "communicate through you. Users have recently said the following:\
 #  "User 234 wrote: ABC is cool but i like GGG more"
 #  "User 345 wrote: DDD is the best ever!"
 #  etc
-PENULTIMATE_PROMPT   = "\nRespond to the following user message considering the above context:\n"
+PENULTIMATE_PROMPT  = "\nRespond to the following user message considering the above context; "
+PENULTIMATE_PROMPT += "also, forward any recent user message which is particularly interesting:\n"
 #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
 
 # Then send resulting llm completion back to user 999 in response to his message
