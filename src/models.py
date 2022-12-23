@@ -7,6 +7,7 @@ from typing import Optional, List
 from array import array
 import enum
 from sqlmodel import Field, SQLModel, Column, ARRAY, Float, Enum
+from sqlalchemy import BigInteger
 from pydantic import  BaseModel, ValidationError, validator
 from pydantic import condecimal
 from time import time
@@ -22,12 +23,12 @@ class UserStatus(str, enum.Enum):
 
 class User(SQLModel, table=True):
     id:                      int                  = Field(primary_key=True, description='Unique user ID')
-    username:                str                  = Field(index=True, description="Username")
     created_at:              timestamp            = Field(default_factory=time, description='The epoch timestamp when the Evaluation was created.')
+    username:                Optional[str]        = Field(default=None, index=True, description="Username")
     first_name:              Optional[str]        = Field(description="User's first name")
     last_name:               Optional[str]        = Field(description="User's last name")
     auth0_id:                Optional[str]        = Field(index=True, description='Auth0 user_id')    
-    telegram_id:             Optional[int]        = Field(index=True, description='Telegram User ID')
+    telegram_id:             Optional[int]        = Field(sa_column=Column(BigInteger()), index=True, description='Telegram User ID')
     telegram_is_bot:         Optional[bool]       = Field(description="is_bot from telegram")
     telegram_is_premium:     Optional[bool]       = Field(description="is_premium from telegram")
     telegram_language_code:  Optional[str]        = Field(description="language_code from telegram")
