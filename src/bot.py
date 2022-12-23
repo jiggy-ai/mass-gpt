@@ -31,15 +31,20 @@ from models import *
 # General Prompt Strategy:
 #  Upon reception of message from a user 999, compose the following prompt
 #  based on recent messages received from other users:
-PREPROMPT   = "Different users are chatting but can't talk to each other directly. "
-PREPROMPT  += "All messages are relayed through you. Please help the users "
-PREPROMPT  += "communicate through you. Users have recently said the following:\n"
+PREPROMPT   = "You are MassGPT, and this is a fun experiment. "
+PREPROMPT  += "Instruction: Different users are sending you messages. "
+PREPROMPT  += "They can not communicate with each other directly. "
+PREPROMPT  += "Any user to user message must be relayed through you. "
+PREPROMPT  += "Pass along any interesting message. "
+PREPROMPT  += "If a user expresses interest in a topic discussed here, "
+PREPROMPT  += "respond to them based on what you read here. "
+PREPROMPT  += "Users have recently said the following to you:\n"
 #  "User 123 wrote: ABC is the greatest thing ever"
 #  "User 234 wrote: ABC is cool but i like GGG more"
 #  "User 345 wrote: DDD is the best ever!"
 #  etc
-PENULTIMATE_PROMPT  = "\nRespond to the following user message considering the above context, "
-PENULTIMATE_PROMPT += "summarizing the relevant sentiment of the above users as your own.\n"
+PENULTIMATE_PROMPT = "\nInstruction: Respond to the following user message considering the above context and Instruction:\n"
+
 #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
 
 # Then send resulting llm completion back to user 999 in response to his message
@@ -63,12 +68,14 @@ openai.api_key       = os.environ["OPENAI_API_KEY"]
 
 OPENAI_ENGINE        = os.environ.get("OPENAI_ENGINE", "text-davinci-003")
 MAX_CONTEXT_WINDOW   = 4097
-MODEL_TEMPERATURE    = 0.7
+MODEL_TEMPERATURE    = 0.54
 
 
 tokenizer            = GPT2Tokenizer.from_pretrained("gpt2")
 
-MAX_CONTEXT_TOKENS = 3200 - len(tokenizer(PREPROMPT + PENULTIMATE_PROMPT)['input_ids'])
+MIN_RESPONSE_TOKENS = 256
+
+MAX_CONTEXT_TOKENS = MAX_CONTEXT_WINDOW - MIN_RESPONSE_TOKENS - len(tokenizer(PREPROMPT + PENULTIMATE_PROMPT)['input_ids'])
 MAX_SUBPROMPT_TOKENS  = 256   # limit of tokens from a single user message sub-prompt
 
 
@@ -105,9 +112,9 @@ class SubPrompt(BaseModel):
     @classmethod
     def from_msg(cls, msg: Message) -> "SubPrompt":
         # create actual subprompt for this users message
-        text = f"User {msg.user_id} wrote: {msg.text}\n"
+        text = f"User {msg.user_id} wrote to MassGPT: {msg.text}\n"
         # verify message is of acceptable length
-        token_count = num_tokens(msg.text)
+        token_count = num_tokens(text)
         if token_count > MAX_SUBPROMPT_TOKENS:  
             raise MessageTooLargeException        
         return SubPrompt(text=text, tokens=token_count)
@@ -137,7 +144,8 @@ class  Context():
         # remove oldest subprompts if over SUBCONTEXT limit
         while self.tokens > MAX_CONTEXT_TOKENS:
             self.tokens -= self._sub_prompts.pop(0).tokens
-
+        logger.warning(self.tokens)
+            
     def sub_prompts(self) -> list[SubPrompt]:
         return self._sub_prompts
 
@@ -158,7 +166,6 @@ def build_prompt(msg_subprompt : SubPrompt) -> str:
         prompt += sub.text
     # add most recent user message after penultimate prompt
     prompt += PENULTIMATE_PROMPT + msg_subprompt.text + "\n"
-    logger.info(prompt)
     return prompt
 
 
@@ -290,7 +297,7 @@ async def send_context(update: Update) -> None:
     await update.message.reply_text("The current context:")            
     for sub in context.sub_prompts():
         await update.message.reply_text(sub.text)
-        
+    await update.message.reply_text(f"{context.tokens} tokens")
 
 
 def summarize_url(update: Update) -> None:
@@ -335,11 +342,25 @@ def summarize_url(update: Update) -> None:
 
     # log UrlSummary to db
     with Session(engine) as session:
-        session.add(UrlSummary(text_id = urltext.id,
-                               user_id = user.id,
-                               model   = OPENAI_ENGINE,
-                               prefix  = prefix,
-                               summary = response))
+        url_summary = UrlSummary(text_id = urltext.id,
+                                 user_id = user.id,
+                                 model   = OPENAI_ENGINE,
+                                 prefix  = prefix,
+                                 summary = response)
+        session.add(url_summary)
+        session.commit()
+        session.refresh(url_summary)
+        
+        # embedding should move to background work queue
+        t0 = time()
+        embedding = Embedding(source     = EmbeddingSource.url_summary,
+                              source_id  = url_summary.id,
+                              collection = ST_MODEL_NAME,
+                              model      = ST_MODEL_NAME,
+                              vector     = st_model.encode(response))
+        logger.info(f"embedding dt: {time()-t0}")
+        session.add(embedding)
+        
         session.commit()
 
     # add the summary to recent context    
@@ -357,7 +378,11 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     Handle command from user
     context - Respond with the current chat context
     url - Summarize a url and add the summary to the chat context
-    prompts - Show the current preprompt and penultimate prompt
+    config - Show the user's current preprompt, penultimate prompt, and temperature config
+    temperature - Set a custom temperature for model completion
+    preprompt - Set a custom preprompt
+    penprompt - Set a custom penultimate prompt
+    reset - Reset 
     """
     user = update.message.from_user
     logger.info(f'"{update.message.text}" {user.id} {user.first_name} {user.last_name} {user.username}')
@@ -366,8 +391,11 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
         await send_context(update)
         return
     elif text == '/prompts':
-        await update.message.reply_text("PREPROMPT: " + PREPROMPT )
-        await update.message.reply_text("PENULTIMATE_PROMPT: " + PENULTIMATE_PROMPT)
+        await update.message.reply_text("Current Prompt Stack:")
+        await update.message.reply_text("(PREPROMPT) " + PREPROMPT )
+        await update.message.reply_text("  [Context as shown by /context]")
+        await update.message.reply_text("(PENULTIMATE_PROMPT) " + PENULTIMATE_PROMPT)
+        await update.message.reply_text("  [Most recent message from user]")
         return
     elif text[:5] == '/url ':
         try:
@@ -379,7 +407,7 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
             logger.exception("error processing message")
             await update.message.reply_text("An exceptional condition occured.")
         return    
-    await update.message.reply_text("Send the bot a message and it will assemble a collection of recent or related messages into a GPT prompt context and prompt your message against that dynamic context, sending you the GPT response.  Send /context to see the current prompt context. Send '/url <url>' to add a summary of the url to the context.")
+    await update.message.reply_text("Send me a message and I will assemble a collection of recent or related messages into a GPT prompt context and prompt your message against that dynamic context, sending you the GPT response.  Send /context to see the current prompt context. Send '/url <url>' to add a summary of the url to the context. Consider this to be a public chat and please maintain a kind and curious standard.")
 
 
     
