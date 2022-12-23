@@ -38,8 +38,8 @@ PREPROMPT  += "communicate through you. Users have recently said the following:\
 #  "User 234 wrote: ABC is cool but i like GGG more"
 #  "User 345 wrote: DDD is the best ever!"
 #  etc
-PENULTIMATE_PROMPT  = "\nRespond to the following user message considering the above context; "
-PENULTIMATE_PROMPT += "also, forward any recent user message which is particularly interesting:\n"
+PENULTIMATE_PROMPT  = "\nRespond to the following user message considering the above context, "
+PENULTIMATE_PROMPT += "summarizing the relevant sentiment of the above users as your own.\n"
 #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
 
 # Then send resulting llm completion back to user 999 in response to his message
@@ -63,7 +63,7 @@ openai.api_key       = os.environ["OPENAI_API_KEY"]
 
 OPENAI_ENGINE        = os.environ.get("OPENAI_ENGINE", "text-davinci-003")
 MAX_CONTEXT_WINDOW   = 4097
-MODEL_TEMPERATURE    = 0.5
+MODEL_TEMPERATURE    = 0.7
 
 
 tokenizer            = GPT2Tokenizer.from_pretrained("gpt2")
@@ -205,7 +205,6 @@ def process_user_message(update: Update, tgram_context: ContextTypes.DEFAULT_TYP
     process the user's message returning the model response string or raising exceptions on error
     """
     # Get user
-
     user = get_telegram_user(update)
     
     if extract_url(update):
@@ -358,12 +357,17 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     Handle command from user
     context - Respond with the current chat context
     url - Summarize a url and add the summary to the chat context
+    prompts - Show the current preprompt and penultimate prompt
     """
     user = update.message.from_user
     logger.info(f'"{update.message.text}" {user.id} {user.first_name} {user.last_name} {user.username}')
     text = update.message.text
     if text == '/context':
         await send_context(update)
+        return
+    elif text == '/prompts':
+        await update.message.reply_text("PREPROMPT: " + PREPROMPT )
+        await update.message.reply_text("PENULTIMATE_PROMPT: " + PENULTIMATE_PROMPT)
         return
     elif text[:5] == '/url ':
         try:
@@ -389,8 +393,7 @@ def load_context_from_db():
             context.add(SubPrompt.from_msg(msg))
             if context.tokens > MAX_CONTEXT_TOKENS - MAX_SUBPROMPT_TOKENS:
                 break
-                    
-    
+    context._sub_prompts.reverse()
 
 load_context_from_db()
 
