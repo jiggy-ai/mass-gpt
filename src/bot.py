@@ -294,9 +294,22 @@ async def send_context(update: Update) -> None:
     """
     Send the current context to user who requested it via /context command
     """
+    def chunk(sub_prompts, max_len=4096) -> str:
+        size = 0
+        text = ""
+        for sub in sub_prompts:
+            if len(sub.text) + size > max_len:
+                yield text
+                text = ""
+                size = 0
+            text += sub.text
+            size += len(sub.text)
+        if text:
+            yield text
+        
     await update.message.reply_text("The current context:")            
-    for sub in context.sub_prompts():
-        await update.message.reply_text(sub.text)
+    for msg in chunk(context.sub_prompts()):
+        await update.message.reply_text(msg)
     await update.message.reply_text(f"{context.tokens} tokens")
 
 
