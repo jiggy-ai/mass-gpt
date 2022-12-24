@@ -276,6 +276,8 @@ async def message(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         response = process_user_message(update, context)
         await update.message.reply_text(response)
+    except openai.error.ServiceUnavailableError:
+        await update.message.reply_text("The OpenAI server is overloaded.")
     except ExtractException:
         await update.message.reply_text("Unable to extract text from url.")
     except MessageTooLargeException:
@@ -414,6 +416,8 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
         try:
             response = summarize_url(update)
             await update.message.reply_text(response)
+        except openai.error.ServiceUnavailableError:
+            await update.message.reply_text("The OpenAI server is overloaded.")
         except ExtractException:
             await update.message.reply_text("Unable to extract text from url.")
         except Exception as e:
