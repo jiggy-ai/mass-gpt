@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 st_model_name = 'multi-qa-mpnet-base-dot-v1'
 st_model = SentenceTransformer(st_model_name)
 
-import whisper
-whisper_model = whisper.load_model("large")
+#import whisper
+#whisper_model = whisper.load_model("large")
 
 print("HF done")
