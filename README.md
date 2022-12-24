@@ -10,7 +10,7 @@ You can also send the bot a url to inject a summary of the web page text into th
 
 Currently there is one global chat context of recent messages from other users, but I plan to scale this by using an embedding of the user message to dynamically assemble a relevant context via ANN query of past messages, message summaries, and url summaries.
 
-There are several motivations for creating this.  One is to explore chatting with an LLM where the mode is presenting some partial consensus of other user’s current inputs instead of the model’s background representations.  Another is to explore dynamic prompt contexts which should have a lot of interesting applications given that GPT seems much less likely to hallucinate when summarizing from its current prompt context.
+There are several motivations for creating this.  One is to explore chatting with an LLM where the model is presenting some partial consensus of other user’s current inputs instead of the model’s background representations.  Another is to explore dynamic prompt contexts which should have a lot of interesting applications given that GPT seems much less likely to hallucinate when summarizing from its current prompt context.
 
 Open to PRs if you are interested in hacking on this in any way, or feel free to message me @ wskish on Twitter or Telegram.  
 
