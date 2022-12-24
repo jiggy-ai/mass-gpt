@@ -313,7 +313,7 @@ def summarize_url(update: Update) -> None:
 
     # compose final prompt and truncate
     prompt = prefix + text
-    prompt.truncate(
+    prompt.truncate(MAX_CONTEXT_WINDOW - MAX_SUBPROMPT_TOKENS)
 
     resp = openai.Completion.create(engine      = OPENAI_ENGINE,
                                     prompt      = prompt,
