@@ -1,5 +1,5 @@
 <p align="center">
-<img src="https://github.com/jiggy-ai/mass-gpt/blob/main/MassGPT" alt="MassGPTBot" width=256> 
+<img src="https://github.com/jiggy-ai/mass-gpt/blob/main/MassGPT.jpg" alt="MassGPTBot" width=256> 
 </p>
 
 **MassGPT** (https://t.me/MassGPTbot) is an open source Telegram bot that interacts with users by responding to messages via a GPT-3.5 completion that is conditioned by a shared sub-prompt context of all recent user messages.
