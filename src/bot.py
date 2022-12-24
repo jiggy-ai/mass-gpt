@@ -18,7 +18,6 @@ from loguru import logger
 from pydantic import BaseModel, Field
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
-from transformers import GPT2Tokenizer
 import openai
 from sentence_transformers import SentenceTransformer
 import re
@@ -27,23 +26,32 @@ from extract import url_to_text, ExtractException
 from db import engine
 from models import *
 
+from tokenizer import token_len
 
 # General Prompt Strategy:
 #  Upon reception of message from a user 999, compose the following prompt
 #  based on recent messages received from other users:
-PREPROMPT   = "You are MassGPT, and this is a fun experiment. "
-PREPROMPT  += "Instruction: Different users are sending you messages. "
-PREPROMPT  += "They can not communicate with each other directly. "
-PREPROMPT  += "Any user to user message must be relayed through you. "
-PREPROMPT  += "Pass along any interesting message. "
-PREPROMPT  += "If a user expresses interest in a topic discussed here, "
-PREPROMPT  += "respond to them based on what you read here. "
-PREPROMPT  += "Users have recently said the following to you:\n"
+
+from subprompt import SubPrompt
+
+
+PREPROMPT = SubPrompt.from_str( \
+"""You are MassGPT, and this is a fun experiment. \
+Instruction: Different users are sending you messages. \
+They can not communicate with each other directly. \
+Any user to user message must be relayed through you. \
+Pass along any interesting message. \
+If a user expresses interest in a topic discussed here, \
+respond to them based on what you read here. \
+Users have recently said the following to you:""")
+
+
 #  "User 123 wrote: ABC is the greatest thing ever"
 #  "User 234 wrote: ABC is cool but i like GGG more"
 #  "User 345 wrote: DDD is the best ever!"
 #  etc
-PENULTIMATE_PROMPT = "\nInstruction: Respond to the following user message considering the above context and Instruction:\n"
+PENULTIMATE_PROMPT = SubPrompt.from_str( \
+"""Instruction: Respond to the following user message considering the above context and Instruction:""")
 
 #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
 
@@ -56,10 +64,10 @@ PENULTIMATE_PROMPT = "\nInstruction: Respond to the following user message consi
 ###
 
 # the PROMPT_PREFIX is prepended to the url content before sending to the language model
-SUMMARIZE_PROMPT_PREFIX = "Provide a detailed summary of the following web content, including what type of content it is (e.g. news article, essay, technical report, blog post, product documentation, content marketing, etc). If the content looks like an error message, respond 'content unavailable'. If there is anything controversial please highlight the controversy. If there is something surprising, unique, or clever, please highlight that as well:\n"
+SUMMARIZE_PROMPT_PREFIX = SubPrompt.from_str("Provide a detailed summary of the following web content, including what type of content it is (e.g. news article, essay, technical report, blog post, product documentation, content marketing, etc). If the content looks like an error message, respond 'content unavailable'. If there is anything controversial please highlight the controversy. If there is something surprising, unique, or clever, please highlight that as well:")
 
 # prompt prefix for Github Readme files
-GITHUB_PROMPT_PREFIX = "Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:\n"
+GITHUB_PROMPT_PREFIX = SubPrompt.from_str("Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:")
 
 SUMMARIZE_MODEL_TEMPERATURE = 0.2    # temperature to use for URL summarization tasks
 
@@ -71,12 +79,11 @@ MAX_CONTEXT_WINDOW   = 4097
 MODEL_TEMPERATURE    = 0.54
 
 
-tokenizer            = GPT2Tokenizer.from_pretrained("gpt2")
-
 MIN_RESPONSE_TOKENS = 256
 
 MAX_CONTEXT_TOKENS = MAX_CONTEXT_WINDOW - MIN_RESPONSE_TOKENS - len(tokenizer(PREPROMPT + PENULTIMATE_PROMPT)['input_ids'])
 MAX_SUBPROMPT_TOKENS  = 256   # limit of tokens from a single user message sub-prompt
+
 
 
 ## Embedding Config
@@ -88,6 +95,25 @@ st_model        =  SentenceTransformer(ST_MODEL_NAME)
 bot = ApplicationBuilder().token(os.environ['MASSGPT_TELEGRAM_API_TOKEN']).build()
 
 
+class MessagePrompt(SubPrompt):
+    @classmethod
+    def from_msg(cls, msg: Message) -> "SubPrompt":
+        # create actual subprompt for this users message
+        text = f"User {msg.user_id} wrote to MassGPT: {msg.text}\n"
+        # verify message is of acceptable length
+        token_count = token_len(text)
+        return MessagePrompt.from_text(text=text, MAX_SUBPROMPT_TOKENS)
+
+class UrlSummaryPrompt(SubPrompt):    
+    @classmethod
+    def from_summary(cls, user: User, text : str) -> "SubPrompt":
+        text = f"User {user.id} posted a link with the following summary:\n{text}\n"
+        token_count = token_len(text)
+        if token_count > MAX_SUBPROMPT_TOKENS + 20:  # allow slightly extra for subprompt overhead
+            raise MessageTooLargeException
+        return UrlSummaryPrompt.from_text(text=text)
+
+
 
 
 class MessageTooLargeException(Exception):
@@ -95,38 +121,7 @@ class MessageTooLargeException(Exception):
     Raise this exception if the user message is too large
     """
 
-def num_tokens(text : str) -> int:
-    """
-    return number of tokens in text per gpt2 tokenizer
-    """
-    return len(tokenizer(text)['input_ids'])
     
-
-class SubPrompt(BaseModel):
-    """
-    An subprompt crafted from a single user message or a summary of a user-supplied url.
-    """
-    text      : str     # the subprompt text
-    tokens    : int     # the number of tokens in the subprompt text
-
-    @classmethod
-    def from_msg(cls, msg: Message) -> "SubPrompt":
-        # create actual subprompt for this users message
-        text = f"User {msg.user_id} wrote to MassGPT: {msg.text}\n"
-        # verify message is of acceptable length
-        token_count = num_tokens(text)
-        if token_count > MAX_SUBPROMPT_TOKENS:  
-            raise MessageTooLargeException        
-        return SubPrompt(text=text, tokens=token_count)
-
-    @classmethod
-    def from_summary(cls, user: User, text : str) -> "SubPrompt":
-        text = f"User {user.id} posted a link with the following summary:\n{text}\n"
-        token_count = num_tokens(text)
-        if token_count > MAX_SUBPROMPT_TOKENS + 20:  # allow slightly extra for subprompt overhead
-            raise MessageTooLargeException
-        return SubPrompt(text=text, tokens=token_count)
-
 
     
 class  Context():
@@ -177,21 +172,6 @@ def extract_url(update: Update):
 
 
 
-
-def truncate_text(text: str, max_tokens : int = 3000) -> str:
-    """
-    truncate summmary text to ~max_tokens  tokens
-    """
-    # measure the text size in tokens
-    token_count = num_tokens(text)
-    if token_count > max_tokens:
-        # crudely truncate longer texts to get it back down to approximately the target max_tokens
-        # TODO: enhance to truncate at sentence boundaries using actual token counts
-        split_point = int(len(text) * max_tokens / token_count)
-        text = text[:split_point]        
-    return text + "-"
-
-
 def get_telegram_user(update : Update) -> User:
     """
     return database User object of the sender of a telegram message
@@ -238,7 +218,7 @@ def process_user_message(update: Update, tgram_context: ContextTypes.DEFAULT_TYP
 
     # build final aggregate prompt
     prompt = build_prompt(msg_subprompt)
-    token_count = num_tokens(prompt)
+    token_count = token_len(prompt)
     
     logger.info(f"final prompt token_count: {token_count}  chars: {len(prompt)}")
     
@@ -332,7 +312,8 @@ def summarize_url(update: Update) -> None:
         prefix = SUMMARIZE_PROMPT_PREFIX
 
     # compose final prompt and truncate
-    prompt = truncate_text(prefix + text)
+    prompt = prefix + text
+    prompt.truncate(
 
     resp = openai.Completion.create(engine      = OPENAI_ENGINE,
                                     prompt      = prompt,
