@@ -221,11 +221,17 @@ def process_user_message(update: Update, tgram_context: ContextTypes.DEFAULT_TYP
     token_count = token_len(prompt)
     
     logger.info(f"final prompt token_count: {token_count}  chars: {len(prompt)}")
-    
-    resp = openai.Completion.create(engine      = OPENAI_ENGINE,
-                                    prompt      = prompt,
-                                    temperature = MODEL_TEMPERATURE,
-                                    max_tokens  = MAX_CONTEXT_WINDOW-token_count)
+
+    for i in range(5):
+        try:
+            resp = openai.Completion.create(engine      = OPENAI_ENGINE,
+                                            prompt      = prompt,
+                                            temperature = MODEL_TEMPERATURE,
+                                            max_tokens  = MAX_CONTEXT_WINDOW-token_count)
+            break
+        except openai.error.ServiceUnavailableError:
+            sleep((i+1)*.1)
+        
     
     response = resp.choices[0].text
     logger.info(response)
@@ -256,6 +262,8 @@ async def message(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         response = process_user_message(update, context)
         await update.message.reply_text(response)
+    except openai.error.ServiceUnavailableError:
+        await update.message.reply_text("The OpenAI server is overloaded.")
     except ExtractException:
         await update.message.reply_text("Unable to extract text from url.")
     except MessageTooLargeException:
@@ -274,9 +282,22 @@ async def send_context(update: Update) -> None:
     """
     Send the current context to user who requested it via /context command
     """
+    def chunk(sub_prompts, max_len=4096) -> str:
+        size = 0
+        text = ""
+        for sub in sub_prompts:
+            if len(sub.text) + size > max_len:
+                yield text
+                text = ""
+                size = 0
+            text += sub.text
+            size += len(sub.text)
+        if text:
+            yield text
+        
     await update.message.reply_text("The current context:")            
-    for sub in context.sub_prompts():
-        await update.message.reply_text(sub.text)
+    for msg in chunk(context.sub_prompts()):
+        await update.message.reply_text(msg)
     await update.message.reply_text(f"{context.tokens} tokens")
 
 
@@ -315,10 +336,16 @@ def summarize_url(update: Update) -> None:
     prompt = prefix + text
     prompt.truncate(MAX_CONTEXT_WINDOW - MAX_SUBPROMPT_TOKENS)
 
-    resp = openai.Completion.create(engine      = OPENAI_ENGINE,
-                                    prompt      = prompt,
-                                    temperature = SUMMARIZE_MODEL_TEMPERATURE,
-                                    max_tokens  = MAX_SUBPROMPT_TOKENS)
+    for i in range(5):
+        try:
+            resp = openai.Completion.create(engine      = OPENAI_ENGINE,
+                                            prompt      = prompt,
+                                            temperature = SUMMARIZE_MODEL_TEMPERATURE,
+                                            max_tokens  = MAX_SUBPROMPT_TOKENS)
+            break
+        except openai.error.ServiceUnavailableError:
+            sleep((i+1)*.1)
+            
     response = resp.choices[0].text
 
     # log UrlSummary to db
@@ -382,6 +409,8 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
         try:
             response = summarize_url(update)
             await update.message.reply_text(response)
+        except openai.error.ServiceUnavailableError:
+            await update.message.reply_text("The OpenAI server is overloaded.")
         except ExtractException:
             await update.message.reply_text("Unable to extract text from url.")
         except Exception as e:

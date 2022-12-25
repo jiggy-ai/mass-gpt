@@ -21,5 +21,5 @@ RUN pip3 install -r requirements.txt
 COPY src/*.py .
 
 # force download of the hugging face models into the container
-RUN python3 download_hf_models_at_buildtime.py 
+#RUN python3 download_hf_models_at_buildtime.py 
 
