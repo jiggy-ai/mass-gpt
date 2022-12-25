@@ -241,11 +241,17 @@ def process_user_message(update: Update, tgram_context: ContextTypes.DEFAULT_TYP
     token_count = num_tokens(prompt)
     
     logger.info(f"final prompt token_count: {token_count}  chars: {len(prompt)}")
-    
-    resp = openai.Completion.create(engine      = OPENAI_ENGINE,
-                                    prompt      = prompt,
-                                    temperature = MODEL_TEMPERATURE,
-                                    max_tokens  = MAX_CONTEXT_WINDOW-token_count)
+
+    for i in range(5):
+        try:
+            resp = openai.Completion.create(engine      = OPENAI_ENGINE,
+                                            prompt      = prompt,
+                                            temperature = MODEL_TEMPERATURE,
+                                            max_tokens  = MAX_CONTEXT_WINDOW-token_count)
+            break
+        except openai.error.ServiceUnavailableError:
+            sleep((i+1)*.1)
+        
     
     response = resp.choices[0].text
     logger.info(response)
@@ -349,10 +355,16 @@ def summarize_url(update: Update) -> None:
     # compose final prompt and truncate
     prompt = truncate_text(prefix + text)
 
-    resp = openai.Completion.create(engine      = OPENAI_ENGINE,
-                                    prompt      = prompt,
-                                    temperature = SUMMARIZE_MODEL_TEMPERATURE,
-                                    max_tokens  = MAX_SUBPROMPT_TOKENS)
+    for i in range(5):
+        try:
+            resp = openai.Completion.create(engine      = OPENAI_ENGINE,
+                                            prompt      = prompt,
+                                            temperature = SUMMARIZE_MODEL_TEMPERATURE,
+                                            max_tokens  = MAX_SUBPROMPT_TOKENS)
+            break
+        except openai.error.ServiceUnavailableError:
+            sleep((i+1)*.1)
+            
     response = resp.choices[0].text
 
     # log UrlSummary to db
