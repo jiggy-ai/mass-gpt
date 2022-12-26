@@ -37,9 +37,11 @@ class SubPrompt(BaseModel):
             raise Exception("precise truncation is not yet implemented")        
         # crudely truncate longer texts to get it back down to approximately the target max_tokens
         # TODO: find precise truncation point using multiple calls to token_len()
-        # TODO: consider option to truncating at sentence boundaries. 
+        # TODO: consider option to truncating at sentence boundaries.
+        if self.tokens <= max_tokens:
+            return
         split_point = int(len(self.text) * max_tokens / self.tokens)
-        while not self.text[split_point].isspace():
+        while not self.text[split_point].isspace():            
             split_point -= 1
         self.text = self.text[:split_point] 
         self.tokens = token_len(self.text)
@@ -62,7 +64,7 @@ class SubPrompt(BaseModel):
         sp = SubPrompt(text=text, tokens=tokens)
         if max_tokens is not None and tokens > max_tokens:
             if not truncate: 
-                raiase Exception(MaximumTokenLimit)
+                raise MaximumTokenLimit
             sp.truncate(max_tokens, precise=precise)
         return sp
     

@@ -4,7 +4,7 @@
 
 import os
 from pydantic import BaseModel, Field
-from typing import Optional
+from sqlmodel import Session, select
 
 from models import Completion
 from subprompt import SubPrompt
@@ -28,7 +28,7 @@ class CompletionLimits(BaseModel):
 
     def max_completion_tokens(self, prompt : SubPrompt) -> int:
         """
-        returns the maximum completion tokens available given the model_max_context limit
+        returns the maximum completion tokens available given the max_context limit
         and the actual number of tokens in the prompt
         raises MinimumTokenLimit or MaximumTokenLimit exceptions if the prompt
         is too small or too big.
@@ -37,7 +37,7 @@ class CompletionLimits(BaseModel):
             raise MinimumTokenLimit
         if prompt.tokens > self.max_prompt_tokens():
             raise MaximumTokenLimit
-        max_available_tokens = self.model_max_context - prompt.tokens
+        max_available_tokens = self.max_context - prompt.tokens
         if max_available_tokens > self.max_completion:
             return self.max_completion
         return max_available_tokens
@@ -46,7 +46,7 @@ class CompletionLimits(BaseModel):
         """
         return the maximum prompt size in tokens
         """
-        return self.model_max_context - self.min_completion
+        return self.max_context - self.min_completion
 
     
 
@@ -79,13 +79,13 @@ class CompletionTask:
         response = self.ifunc(model                 = self.model,
                               prompt                = str(prompt),
                               temperature           = self.temperature,
-                              max_completion_tokens = max_completion)
+                              max_completion_tokens = max_completion) 
         
         # save Completion object in db
         with Session(engine) as session:
             completion = Completion(model       = self.model,
                                     temperature = self.temperature,
-                                    prompt      = prompt,
+                                    prompt      = str(prompt),
                                     completion  = response)
             session.add(completion)
             session.commit()

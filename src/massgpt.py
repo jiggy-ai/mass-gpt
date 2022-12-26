@@ -2,11 +2,18 @@
 #
 #  Copyright (C) 2022 William S. Kish
 
+from sqlmodel import Session, select
+from sentence_transformers import SentenceTransformer
+import urllib.parse
+
+from db import engine
+
 import gpt3
+
+
 
 from models import *
 
-from sentence_transformers import SentenceTransformer
 
 from extract import url_to_text
 from subprompt import SubPrompt
@@ -43,7 +50,7 @@ PENULTIMATE_PROMPT = SubPrompt.from_str( \
 # Then send resulting llm completion back to user 999 in response to his message
 
 
-
+MESSAGE_PROMPT_OVERHEAD_TOKENS = (PREPROMPT + PENULTIMATE_PROMPT).tokens
 
 
 ###
@@ -58,43 +65,41 @@ GITHUB_PROMPT_PREFIX = SubPrompt.from_str("Provide a summary of the following gi
 
 
 
+MAX_MESSAGE_SP_TOKENS   = 300
+
+
+
+
+msg_response_limits = gpt3.CompletionLimits(min_prompt     = MESSAGE_PROMPT_OVERHEAD_TOKENS,
+                                            min_completion = 100,
+                                            max_completion = 600)
+
+msg_response_task   = gpt3.CompletionTask(limits      = msg_response_limits,
+                                          temperature = 0.54)
+
+
+url_summary_limits = gpt3.CompletionLimits(min_prompt     = 40,
+                                           min_completion = 300,
+                                           max_completion = 600)
+
+url_summary_task   = gpt3.CompletionTask(limits      = url_summary_limits,
+                                         temperature = 0.2)
+
+
+msg_summary_limits = gpt3.CompletionLimits(min_prompt     = 400,
+                                           min_completion = 200,
+                                           max_completion = 600)
+
+msg_summary_task   = gpt3.CompletionTask(limits      = msg_summary_limits,
+                                         temperature = 0.05)
+
+
+
 
 ## Embedding Config
 ST_MODEL_NAME   =  'multi-qa-mpnet-base-dot-v1'
 st_model        =  SentenceTransformer(ST_MODEL_NAME)
 
-
-
-
-
-msg_response_limits = gpt3_CompletionLimits(min_prompt     = 3,
-                                            min_completion = 100,
-                                            max_completion = 600)
-
-msg_response_task   = gpt3_CompletionTask(limits      = msg_response_limits,
-                                          temperature = 0.54)
-
-
-url_summary_limits = gpt3_CompletionLimits(min_prompt     = 40,
-                                           min_completion = 300,
-                                           max_completion = 600)
-
-url_summary_task   = gpt3_CompletionTask(limits      = url_summary_limits,
-                                         temperature = 0.2)
-
-
-msg_summary_limits = gpt3_CompletionLimits(min_prompt     = 400,
-                                           min_completion = 200,
-                                           max_completion = 600)
-
-msg_summary_task   = gpt3_CompletionTask(limits      = msg_summary_limits,
-                                         temperature = 0.05)
-
-
-
-MIN_RESPONSE_TOKENS = 256
-MAX_CONTEXT_TOKENS = MAX_CONTEXT_WINDOW - MIN_RESPONSE_TOKENS - len(tokenizer(PREPROMPT + PENULTIMATE_PROMPT)['input_ids'])
-MAX_SUBPROMPT_TOKENS  = 256   # limit of tokens from a single user message sub-prompt
 
 
     
@@ -111,9 +116,8 @@ class  Context():
         self._sub_prompts.append(sub_prompt)
         self.tokens += sub_prompt.tokens
         # remove oldest subprompts if over SUBCONTEXT limit
-        while self.tokens > MAX_CONTEXT_TOKENS:
+        while self.tokens + MESSAGE_PROMPT_OVERHEAD_TOKENS + MAX_MESSAGE_SP_TOKENS > msg_response_task.max_prompt_tokens():
             self.tokens -= self._sub_prompts.pop(0).tokens
-        logger.warning(self.tokens)
             
     def sub_prompts(self) -> list[SubPrompt]:
         return self._sub_prompts
@@ -123,6 +127,7 @@ class  Context():
 ### maintain a single global context (for now)
 ##
 context = Context()
+
 
 
 def build_message_prompt(msg_subprompt : SubPrompt) -> str:
@@ -150,7 +155,8 @@ class MessageSubPrompt(SubPrompt):
     def from_msg(cls, msg: Message) -> "SubPrompt":
         # create user message specific subprompt
         text = f"User {msg.user_id} wrote to MassGPT: {msg.text}"
-        return MessageSubPrompt.from_text(text=text, max_tokens=300)
+        return MessageSubPrompt.from_str(text=text, max_tokens=MAX_MESSAGE_SP_TOKENS)
+            
 
     
 class UrlSummarySubPrompt(SubPrompt):
@@ -162,7 +168,7 @@ class UrlSummarySubPrompt(SubPrompt):
         text = f"User {user.id} posted a link with the following summary:\n{text}\n"
         # don't need to specify max _tokens here since the summary is a model output
         # that is regulated through the user_summary_limits
-        return UrlSummarySubPrompt.from_text(text=text)
+        return UrlSummarySubPrompt.from_str(text=text)
 
 
 class SummarySubPrompt(SubPrompt):
@@ -174,7 +180,7 @@ class SummarySubPrompt(SubPrompt):
         text = f"Here is a summary of previous discussions for reference: {text}"
         # don't need to specify max _tokens here since the summary is a model output
         # that is regulated through the msg_summary_limits        
-        return SummarySubPrompt.from_text(text=text, max_tokens=300)
+        return SummarySubPrompt.from_str(text=text, max_tokens=300)
 
     
     
@@ -204,10 +210,10 @@ def receive_message(user : User, text : str) -> str:
         session.refresh(msg)
 
     # build final aggregate prompt
-    msg_subprompt = MessageSubPrompt.from_msg(msg)    
+    msg_subprompt = MessageSubPrompt.from_msg(msg)
     prompt = build_message_prompt(msg_subprompt)
-    
-    logger.info(f"final prompt token_count: {token_count}  chars: {len(prompt)}")
+
+    logger.info(f"final prompt token_count: {prompt.tokens}  chars: {len(prompt.text)}")
 
     # generate the model response completion
     response = msg_response_task.completion(prompt)
@@ -216,7 +222,7 @@ def receive_message(user : User, text : str) -> str:
     # add the new user message to the global shared context
     context.add(msg_subprompt)
     
-    return response
+    return str(response)
 
     
 
@@ -250,16 +256,17 @@ def summarize_url(user : User,  url : str) -> str:
 
     # compose final prompt and truncate
     prompt = prefix + text
-    prompt.truncate(MAX_CONTEXT_WINDOW - MAX_SUBPROMPT_TOKENS)
+    prompt.truncate(url_summary_task.max_prompt_tokens())
 
     completion = url_summary_task.completion(prompt)
-
+    summary_text = str(completion)
+    
     with Session(engine) as session:
         url_summary = UrlSummary(text_id = urltext.id,
                                  user_id = user.id,
                                  model   = url_summary_task.model,
-                                 prefix  = prefix,
-                                 summary = completion)
+                                 prefix  = prefix.text,
+                                 summary = summary_text)
         session.add(url_summary)
         session.commit()
         session.refresh(url_summary)
@@ -270,18 +277,18 @@ def summarize_url(user : User,  url : str) -> str:
                               source_id  = url_summary.id,
                               collection = ST_MODEL_NAME,
                               model      = ST_MODEL_NAME,
-                              vector     = st_model.encode(completion))
+                              vector     = st_model.encode(summary_text))
         logger.info(f"embedding dt: {time()-t0}")
         session.add(embedding)
         
         session.commit()
 
     # add the summary to recent context    
-    context.add(UrlSummarySubPrompt.from_text(user, text=response))
+    context.add(UrlSummarySubPrompt.from_summary(user=user, text=summary_text))
 
-    logger.info(response)
+    logger.info(summary_text)
     # send the text summary to the user as FYI
-    return response
+    return summary_text
 
 
 
@@ -297,11 +304,11 @@ def current_context(max_len=4096) -> str:
             yield text
             text = ""
             size = 0
-        text += sub.text
-        size += len(sub.text)
+        text += sub.text + "\n"
+        size += len(sub.text) + 1
     if text:
         yield text
-    
+    yield f"{context.tokens} tokens"
 
 
     
@@ -309,9 +316,11 @@ def load_context_from_db():
     logger.info('load_context_from_db')    
     with Session(engine) as session:
         for msg in session.exec(select(Message).order_by(Message.id.desc())):
-            context.add(MessageSubPrompt.from_msg(msg))
-            if context.tokens > MAX_CONTEXT_TOKENS - MAX_SUBPROMPT_TOKENS:
+            next_sp = MessageSubPrompt.from_msg(msg)
+            if (MESSAGE_PROMPT_OVERHEAD_TOKENS + context.tokens + next_sp.tokens + MAX_MESSAGE_SP_TOKENS) > msg_response_task.max_prompt_tokens():
                 break
+            context.add(next_sp)
+    # revert to chronological order
     context._sub_prompts.reverse()
 
 load_context_from_db()

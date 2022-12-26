@@ -78,9 +78,9 @@ class UrlSummary(SQLModel, table=True):
     #completion_id:   int      = Field(foreign_key="completion.id", description="associated completion that provided the response text")
 
 
-class ChatSummary(SQLmodel, tabler=True):
+class ChatSummary(SQLModel, table=True):
     id:            int       = Field(primary_key=True, description="The ChatSummary unique id.")
-    created_at:    timestamp = Field(index=true, default_factory=time, description='The epoch timestamp when this was created.')
+    created_at:    timestamp = Field(index=True, default_factory=time, description='The epoch timestamp when this was created.')
     completion_id: int       = Field(foreign_key="completion.id", description="associated completion that provided the response text")
 
     

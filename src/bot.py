@@ -20,6 +20,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 import re
 
+import openai
 from db import engine
 from models import *
 from exceptions import *
@@ -72,7 +73,7 @@ async def message(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     text = update.message.text    
     logger.info(f'{user.id} {user.first_name} {user.last_name} {user.username} {user.telegram_id}: "{text}"')
     try:
-        url = extract_url(text):
+        url = extract_url(text)
         if url:
             response = massgpt.summarize_url(user, url)
         else:
