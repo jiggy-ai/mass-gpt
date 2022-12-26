@@ -117,7 +117,7 @@ class  Context():
         Used to recreate context in reverse order from database select
         raises MaximumTokenLimit when prompt context limit is exceeded
         """
-        if self.tokens + MESSAGE_PROMPT_OVERHEAD_TOKENS + sub_prompt.tokens > msg_response_task.max_prompt_tokens():
+        if self.tokens + MESSAGE_PROMPT_OVERHEAD_TOKENS + sub_prompt.tokens + MAX_MESSAGE_SP_TOKENS > msg_response_task.max_prompt_tokens():
             raise MaximumTokenLimit
         self._sub_prompts.insert(0, sub_prompt)
         self.tokens += sub_prompt.tokens
