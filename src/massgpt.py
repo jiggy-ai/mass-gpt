@@ -10,10 +10,8 @@ from db import engine
 
 import gpt3
 
-
-
+from exceptions import *
 from models import *
-
 
 from extract import url_to_text
 from subprompt import SubPrompt
@@ -113,6 +111,17 @@ class  Context():
         self.tokens  = 0
         self._sub_prompts = []
 
+    def push(self, sub_prompt : SubPrompt) -> bool:
+        """
+        Push sub_prompt onto begining of context.
+        Used to recreate context in reverse order from database select
+        raises MaximumTokenLimit when prompt context limit is exceeded
+        """
+        if self.tokens + MESSAGE_PROMPT_OVERHEAD_TOKENS + sub_prompt.tokens > msg_response_task.max_prompt_tokens():
+            raise MaximumTokenLimit
+        self._sub_prompts.insert(0, sub_prompt)
+        self.tokens += sub_prompt.tokens
+        
     def add(self, sub_prompt : SubPrompt) -> None:
         # add new prompt to end of sub_prompts
         self._sub_prompts.append(sub_prompt)
@@ -350,19 +359,20 @@ def load_context_from_db():
     logger.info('load_context_from_db')    
     with Session(engine) as session:
         for msg in session.exec(select(Message).order_by(Message.id.desc())):
-            if context.tokens > 3000: break
             msg_subprompt = MessageSubPrompt.from_msg(msg)
             resp = session.exec(select(Response).where(Response.message_id == msg.id)).first()
             if not resp:
-                context.add(msg_subprompt)
+                try:
+                    context.push(msg_subprompt)
+                except MaximumTokenLimit:
+                    break
                 continue
             comp = session.exec(select(Completion).where(Completion.id == resp.completion_id)).first()
             if not comp: continue
             rsp_subprompt = MessageResponseSubPrompt.from_msg_completion(msg_subprompt, comp)
-            if MESSAGE_PROMPT_OVERHEAD_TOKENS + rsp_subprompt.tokens + context.tokens > msg_response_task.max_prompt_tokens():
+            try:
+                context.push(rsp_subprompt)
+            except MaximumTokenLimit:
                 break
-            context.add(rsp_subprompt)
-    # revert to chronological order
-    context._sub_prompts.reverse()
 
 load_context_from_db()
