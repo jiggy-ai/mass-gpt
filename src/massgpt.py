@@ -29,10 +29,13 @@ from subprompt import SubPrompt
 
 PREPROMPT = SubPrompt.from_str( \
 """You are MassGPT, and this is a fun experiment. \
+You were built by Jiggy AI using OpenAI text-davinci-003. \
 Instruction: Different users are sending you messages. \
 They can not communicate with each other directly. \
 Any user to user message must be relayed through you. \
 Pass along any interesting message. \
+Try not to repeat yourself. \
+Ask users questions if you are not sure what to say. \
 If a user expresses interest in a topic discussed here, \
 respond to them based on what you read here. \
 Users have recently said the following to you:""")
@@ -69,13 +72,12 @@ MAX_MESSAGE_SP_TOKENS   = 300
 
 
 
-
 msg_response_limits = gpt3.CompletionLimits(min_prompt     = MESSAGE_PROMPT_OVERHEAD_TOKENS,
                                             min_completion = 100,
-                                            max_completion = 600)
+                                            max_completion = 400)
 
 msg_response_task   = gpt3.CompletionTask(limits      = msg_response_limits,
-                                          temperature = 0.54)
+                                          temperature = 0.66)
 
 
 url_summary_limits = gpt3.CompletionLimits(min_prompt     = 40,
@@ -141,6 +143,7 @@ def build_message_prompt(msg_subprompt : SubPrompt) -> str:
     # add most recent user message after penultimate prompt
     prompt += PENULTIMATE_PROMPT
     prompt += msg_subprompt
+    prompt += "MassGPT responded:"
     return prompt
 
 
@@ -158,6 +161,15 @@ class MessageSubPrompt(SubPrompt):
         return MessageSubPrompt.from_str(text=text, max_tokens=MAX_MESSAGE_SP_TOKENS)
             
 
+class MessageResponseSubPrompt(SubPrompt):
+    """
+    SubPrompt Context for a user-generated message
+    """
+    @classmethod
+    def from_msg_completion(cls, msp: MessageSubPrompt, comp: Completion) -> "SubPrompt":
+        return msp + f"MassGPT responded: {comp.completion}"
+            
+    
     
 class UrlSummarySubPrompt(SubPrompt):
     """
@@ -180,7 +192,7 @@ class SummarySubPrompt(SubPrompt):
         text = f"Here is a summary of previous discussions for reference: {text}"
         # don't need to specify max _tokens here since the summary is a model output
         # that is regulated through the msg_summary_limits        
-        return SummarySubPrompt.from_str(text=text, max_tokens=300)
+        return SummarySubPrompt.from_str(text=text)
 
     
     
@@ -216,13 +228,24 @@ def receive_message(user : User, text : str) -> str:
     logger.info(f"final prompt token_count: {prompt.tokens}  chars: {len(prompt.text)}")
 
     # generate the model response completion
-    response = msg_response_task.completion(prompt)
-    logger.info(response)
+    comp = msg_response_task.completion(prompt)
+    logger.info(comp)
 
-    # add the new user message to the global shared context
-    context.add(msg_subprompt)
+    rsp_text = comp.completion.lstrip()
+    if not rsp_text:
+        return "no response from model, try again"
     
-    return str(response)
+    # add the new user message to the global shared context
+    rsp_subprompt = MessageResponseSubPrompt.from_msg_completion(msg_subprompt, comp)
+    context.add(rsp_subprompt)
+
+    # save response to database
+    with Session(engine) as session:    
+         session.add(Response(message_id=msg.id,
+                              completion_id=comp.id))
+         session.commit()
+         
+    return rsp_text
 
     
 
@@ -327,10 +350,18 @@ def load_context_from_db():
     logger.info('load_context_from_db')    
     with Session(engine) as session:
         for msg in session.exec(select(Message).order_by(Message.id.desc())):
-            next_sp = MessageSubPrompt.from_msg(msg)
-            if (MESSAGE_PROMPT_OVERHEAD_TOKENS + context.tokens + next_sp.tokens + MAX_MESSAGE_SP_TOKENS) > msg_response_task.max_prompt_tokens():
+            if context.tokens > 3500: break
+            msg_subprompt = MessageSubPrompt.from_msg(msg)
+            resp = session.exec(select(Response).where(Response.message_id == msg.id)).first()
+            if not resp:
+                context.add(msg_subprompt)
+                continue
+            comp = session.exec(select(Completion).where(Completion.id == resp.completion_id)).first()
+            if not comp: continue
+            rsp_subprompt = MessageResponseSubPrompt.from_msg_completion(msg_subprompt, comp)
+            if MESSAGE_PROMPT_OVERHEAD_TOKENS + rsp_subprompt.tokens + context.tokens > msg_response_task.max_prompt_tokens():
                 break
-            context.add(next_sp)
+            context.add(rsp_subprompt)
     # revert to chronological order
     context._sub_prompts.reverse()
 
