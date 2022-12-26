@@ -1,7 +1,8 @@
 #
 #  SubPrompt class that assists with keeping track of token counts and 
 #  efficiently combining SubPrompts
-
+#
+#  Copyright (C) 2022 William S. Kish
 
 import os
 from pydantic import BaseModel, Field
@@ -9,22 +10,8 @@ from tokenizer import token_len
 from typing import Optional
 
 
-class MinimumTokenLimit(Exception):
-    """
-    The specified minimum token count has been exceeded
-    """
-    
-class MaximumTokensExceeded(Exception):
-    """
-    The specified maximum token count has been exceeded
-    """
 
 
-def truncate_text(text: str, max_tokens: int) -> str:
-    """
-    truncate summmary text to ~max_tokens  tokens
-    """
-    # measure the text size in tokens
     
 
 class SubPrompt(BaseModel):
@@ -97,43 +84,6 @@ class SubPrompt(BaseModel):
         return self.text
 
 
-
-class CompletionLimits(BaseModel):
-    """
-    specification for limits for:
-    min prompt tokens
-    min completion tokens
-    max completion tokens
-    given a max_content tokens
-    """
-    max_context      : int
-    min_prompt       : int
-    min_completion   : int
-    max_completion   : int    
-
-    def max_completion_tokens(self, prompt : SubPrompt) -> int:
-        """
-        returns the maximum completion tokens available given the model_max_context limit
-        and the actual number of tokens in the prompt
-        raises MinimumTokenLimit or MaximumTokenLimit exceptions if the prompt
-        is too small or too big.
-        """
-        if prompt.tokens < self.min_prompt:
-            raise MinimumTokenLimit
-        if prompt.tokens > self.max_prompt_tokens():
-            raise MaximumTokenLimit
-        max_available_tokens = self.model_max_context - prompt.tokens
-        if max_available_tokens > self.max_completion:
-            return self.max_completion
-        return max_available_tokens
-
-    def max_prompt_tokens(self) -> int:
-        """
-        return the maximum prompt size in tokens
-        """
-        return self.model_max_context - self.min_completion
-
-    
     
 if __name__ == "__main__":
     """

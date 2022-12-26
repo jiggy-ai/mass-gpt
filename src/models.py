@@ -11,7 +11,6 @@ from sqlalchemy import BigInteger
 from pydantic import  BaseModel, ValidationError, validator
 from pydantic import condecimal
 from time import time
-import telegram
 
 timestamp = condecimal(max_digits=14, decimal_places=3)  # unix epoch timestamp decimal to millisecond precision
 
@@ -33,15 +32,6 @@ class User(SQLModel, table=True):
     telegram_is_premium:     Optional[bool]       = Field(description="is_premium from telegram")
     telegram_language_code:  Optional[str]        = Field(description="language_code from telegram")
 
-    @classmethod
-    def from_telegram_user(cls, user: telegram.User) -> "Message":
-        return User(username              = user.username,
-                    first_name            = user.first_name,
-                    last_name             = user.last_name,
-                    telegram_id           = user.id,
-                    telegram_is_bot       = user.is_bot,
-                    telegram_is_premium   = user.is_premium,
-                    telegram_lanuage_code = user.language_code)
     
 
     
@@ -51,10 +41,6 @@ class Message(SQLModel, table=True):
     user_id:          int           = Field(index=True, foreign_key='user.id', description='The user who sent the Message')
     created_at:       timestamp     = Field(index=True, default_factory=time, description='The epoch timestamp when the Message was created.')
     
-    @classmethod
-    def from_telegram_update(cls, update: telegram.Update, user : User) -> "Message":
-        logger.info(f"Message from {user.id} {user.first_name} {user.last_name}: {update.message.text}")
-        return Message(text=update.message.text, user_id=user.id)
     
     
 
@@ -110,7 +96,11 @@ class Completion(SQLModel, table=True):
     completion:  str       = Field(max_length=65535, description="The completion received from the model.")
     created_at:  timestamp = Field(default_factory=time, description='The epoch timestamp when this was created.')
 
-
+    def __str__(self):
+        """
+        return the completion text itself when accesses as a str
+        """
+        return self.completion
     
 class EmbeddingSource(str, enum.Enum):
     """
