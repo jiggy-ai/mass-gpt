@@ -2,7 +2,7 @@
 #
 #  Copyright (C) 2022 William S. Kish
 
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 from sentence_transformers import SentenceTransformer
 import urllib.parse
 
@@ -73,7 +73,7 @@ MAX_MESSAGE_SP_TOKENS   = 300
 
 
 msg_response_limits = gpt3.CompletionLimits(min_prompt     = MESSAGE_PROMPT_OVERHEAD_TOKENS,
-                                            min_completion = 100,
+                                            min_completion = 200,
                                             max_completion = 400)
 
 msg_response_task   = gpt3.CompletionTask(limits      = msg_response_limits,
@@ -344,13 +344,13 @@ def current_context(max_len=4096) -> str:
         yield text
     yield f"{context.tokens} tokens"
 
-
+    
     
 def load_context_from_db():
     logger.info('load_context_from_db')    
     with Session(engine) as session:
         for msg in session.exec(select(Message).order_by(Message.id.desc())):
-            if context.tokens > 3500: break
+            if context.tokens > 3000: break
             msg_subprompt = MessageSubPrompt.from_msg(msg)
             resp = session.exec(select(Response).where(Response.message_id == msg.id)).first()
             if not resp:
