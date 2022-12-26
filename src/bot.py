@@ -32,9 +32,9 @@ import massgpt
 bot = ApplicationBuilder().token(os.environ['MASSGPT_TELEGRAM_API_TOKEN']).build()
 
 
-def extract_url(update: Update):
+def extract_url(text: str):
     try:
-        return re.search("(?P<url>https?://[^\s]+)", update.message.text).group("url")
+        return re.search("(?P<url>https?://[^\s]+)", text).group("url")
     except AttributeError:
         return None
 
@@ -74,6 +74,7 @@ async def message(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     logger.info(f'{user.id} {user.first_name} {user.last_name} {user.username} {user.telegram_id}: "{text}"')
     try:
         url = extract_url(text)
+        print("URL", url)
         if url:
             response = massgpt.summarize_url(user, url)
         else:
@@ -120,16 +121,12 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
         for msg in massgpt.current_context():
             await update.message.reply_text(msg)
         return
-    #elif text == '/prompts':
-    #    await update.message.reply_text("Current Prompt Stack:")
-    #    await update.message.reply_text("(PREPROMPT) " + PREPROMPT )
-    #    await update.message.reply_text("  [Context as shown by /context]")
-    #    await update.message.reply_text("(PENULTIMATE_PROMPT) " + PENULTIMATE_PROMPT)
-    #    await update.message.reply_text("  [Most recent message from user]")
-    #    return
+    elif text == '/prompts':
+        await update.message.reply_text(massgpt.current_prompts())
+        return
     elif text[:5] == '/url ':
         try:
-            url = extract_url(update)            
+            url = extract_url(text)            
             response = massgpt.summarize_url(user, url)
             await update.message.reply_text(response)
         except openai.error.ServiceUnavailableError:

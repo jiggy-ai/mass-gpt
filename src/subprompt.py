@@ -11,8 +11,10 @@ from typing import Optional
 
 
 
-
-    
+# have found that marking truncated text as truncated stops the model from trying
+# to complete the missing text instead of summarizing it as requested
+TRUNCATED = "<TRUNCATED>"
+TRUNCATED_LEN = token_len(TRUNCATED)
 
 class SubPrompt(BaseModel):
     """
@@ -40,10 +42,10 @@ class SubPrompt(BaseModel):
         # TODO: consider option to truncating at sentence boundaries.
         if self.tokens <= max_tokens:
             return
-        split_point = int(len(self.text) * max_tokens / self.tokens)
+        split_point = int(len(self.text) * (max_tokens-TRUNCATED_LEN) / self.tokens)
         while not self.text[split_point].isspace():            
             split_point -= 1
-        self.text = self.text[:split_point] 
+        self.text = self.text[:split_point] + TRUNCATED
         self.tokens = token_len(self.text)
         
         

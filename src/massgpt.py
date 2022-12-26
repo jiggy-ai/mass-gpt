@@ -292,6 +292,17 @@ def summarize_url(user : User,  url : str) -> str:
 
 
 
+def current_prompts() -> str:
+
+    prompt  = "Current prompt stack:\n\n"
+    prompt += PREPROMPT.text +"\n\n"
+    prompt +=  "[Context as shown by /context]\n\n"
+    prompt +=  PENULTIMATE_PROMPT.text + "\n\n"
+    prompt +=  "[Most recent message from user]"
+
+    return prompt
+    
+
 
 def current_context(max_len=4096) -> str:
     """
