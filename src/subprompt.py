@@ -16,7 +16,7 @@ from typing import Optional
 TRUNCATED = "<TRUNCATED>"
 TRUNCATED_LEN = token_len(TRUNCATED)
 
-class SubPrompt(BaseModel):
+class SubPrompt:
     """
     A SubPrompt is a text string and associated token count for the string
 
@@ -30,10 +30,7 @@ class SubPrompt(BaseModel):
     actual token count by 1 token.  Tests on random strings show this occurs less
     than 1% of the time.
     """
-    text   : str    # the subprompt text string
-    tokens : int    # the number of tokens in the text string
 
-    
     def truncate(self, max_tokens, precise=False):
         if precise == True:
             raise Exception("precise truncation is not yet implemented")        
@@ -49,8 +46,7 @@ class SubPrompt(BaseModel):
         self.tokens = token_len(self.text)
         
         
-    @classmethod
-    def from_str(cls, text: str, max_tokens=None, truncate=False, precise=False) -> "SubPrompt":
+    def __init__(self, text: str, max_tokens=None, truncate=False, precise=False, tokens=None) -> "SubPrompt":
         """
         Create a subprompt from the specified string.
         If max_tokens is specified, then the SubPrompt will be limited to max_tokens.
@@ -62,17 +58,20 @@ class SubPrompt(BaseModel):
         """
         if precise == True:
             raise Exception("precise truncation is not yet implemented")
-        tokens = token_len(text)
-        sp = SubPrompt(text=text, tokens=tokens)
+        if tokens is None:
+            tokens = token_len(text)
+        self.text = text
+        self.tokens = tokens
         if max_tokens is not None and tokens > max_tokens:
             if not truncate: 
                 raise MaximumTokenLimit
-            sp.truncate(max_tokens, precise=precise)
-        return sp
+            self.truncate(max_tokens, precise=precise)
+
     
 
-    def __len__(self) -> int:
+    def __len__(self) -> int:        
         return self.tokens
+    
 
     def __add__(self, o) -> "SubPrompt":
         """
@@ -81,9 +80,11 @@ class SubPrompt(BaseModel):
         which is acceptable for our intended use.
         """
         if isinstance(o, str):
-            o = SubPrompt.from_str(o)
+            o = SubPrompt(o)
+        
         return SubPrompt(text   = self.text + "\n" + o.text,
-                         tokens = self.tokens  + 1 + o.tokens)
+                       tokens = self.tokens  + 1 + o.tokens)
+    
     def __str__(self):
         return self.text
 
@@ -107,8 +108,8 @@ if __name__ == "__main__":
         c2 = randstring(randint(20, 100))
         print("c1", c1)
         print("c2", c2)
-        sp1 = SubPrompt.from_str(c1)
-        sp2 = SubPrompt.from_str(c2)
+        sp1 = SubPrompt(c1)
+        sp2 = SubPrompt(c2)
         print("sp1", sp1)
         print("sp2", sp2)
 

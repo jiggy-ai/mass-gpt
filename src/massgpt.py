@@ -25,7 +25,7 @@ from subprompt import SubPrompt
 from subprompt import SubPrompt
 
 
-PREPROMPT = SubPrompt.from_str( \
+PREPROMPT = SubPrompt( \
 """You are MassGPT, and this is a fun experiment. \
 You were built by Jiggy AI using OpenAI text-davinci-003. \
 Instruction: Different users are sending you messages. \
@@ -43,7 +43,7 @@ Users have recently said the following to you:""")
 #  "User 234 wrote: ABC is cool but i like GGG more"
 #  "User 345 wrote: DDD is the best ever!"
 #  etc
-PENULTIMATE_PROMPT = SubPrompt.from_str( \
+PENULTIMATE_PROMPT = SubPrompt( \
 """Instruction: Respond to the following user message considering the above context and Instruction:""")
 
 #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
@@ -59,10 +59,10 @@ MESSAGE_PROMPT_OVERHEAD_TOKENS = (PREPROMPT + PENULTIMATE_PROMPT).tokens
 ###
 
 # the PROMPT_PREFIX is prepended to the url content before sending to the language model
-SUMMARIZE_PROMPT_PREFIX = SubPrompt.from_str("Provide a detailed summary of the following web content, including what type of content it is (e.g. news article, essay, technical report, blog post, product documentation, content marketing, etc). If the content looks like an error message, respond 'content unavailable'. If there is anything controversial please highlight the controversy. If there is something surprising, unique, or clever, please highlight that as well:")
+SUMMARIZE_PROMPT_PREFIX = SubPrompt("Provide a detailed summary of the following web content, including what type of content it is (e.g. news article, essay, technical report, blog post, product documentation, content marketing, etc). If the content looks like an error message, respond 'content unavailable'. If there is anything controversial please highlight the controversy. If there is something surprising, unique, or clever, please highlight that as well:")
 
 # prompt prefix for Github Readme files
-GITHUB_PROMPT_PREFIX = SubPrompt.from_str("Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:")
+GITHUB_PROMPT_PREFIX = SubPrompt("Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:")
 
 
 
@@ -167,7 +167,7 @@ class MessageSubPrompt(SubPrompt):
     def from_msg(cls, msg: Message) -> "SubPrompt":
         # create user message specific subprompt
         text = f"User {msg.user_id} wrote to MassGPT: {msg.text}"
-        return MessageSubPrompt.from_str(text=text, max_tokens=MAX_MESSAGE_SP_TOKENS)
+        return MessageSubPrompt(text=text, max_tokens=MAX_MESSAGE_SP_TOKENS)
             
 
 class MessageResponseSubPrompt(SubPrompt):
@@ -189,7 +189,7 @@ class UrlSummarySubPrompt(SubPrompt):
         text = f"User {user.id} posted a link with the following summary:\n{text}\n"
         # don't need to specify max _tokens here since the summary is a model output
         # that is regulated through the user_summary_limits
-        return UrlSummarySubPrompt.from_str(text=text)
+        return UrlSummarySubPrompt(text=text)
 
 
 class SummarySubPrompt(SubPrompt):
@@ -201,7 +201,7 @@ class SummarySubPrompt(SubPrompt):
         text = f"Here is a summary of previous discussions for reference: {text}"
         # don't need to specify max _tokens here since the summary is a model output
         # that is regulated through the msg_summary_limits        
-        return SummarySubPrompt.from_str(text=text)
+        return SummarySubPrompt(text=text)
 
     
     
