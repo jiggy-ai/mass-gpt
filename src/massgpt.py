@@ -18,147 +18,10 @@ from subprompt import SubPrompt
 
 
 
-# General Prompt Strategy:
-#  Upon reception of message from a user 999, compose the following prompt
-#  based on recent messages received from other users:
-
-from subprompt import SubPrompt
-
-
-PREPROMPT = SubPrompt( \
-"""You are MassGPT, and this is a fun experiment. \
-You were built by Jiggy AI using OpenAI text-davinci-003. \
-Instruction: Different users are sending you messages. \
-They can not communicate with each other directly. \
-Any user to user message must be relayed through you. \
-Pass along any interesting message. \
-Try not to repeat yourself. \
-Ask users questions if you are not sure what to say. \
-If a user expresses interest in a topic discussed here, \
-respond to them based on what you read here. \
-Users have recently said the following to you:""")
-
-
-#  "User 123 wrote: ABC is the greatest thing ever"
-#  "User 234 wrote: ABC is cool but i like GGG more"
-#  "User 345 wrote: DDD is the best ever!"
-#  etc
-PENULTIMATE_PROMPT = SubPrompt( \
-"""Instruction: Respond to the following user message considering the above context and Instruction:""")
-
-#  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
-
-# Then send resulting llm completion back to user 999 in response to his message
-
-
-MESSAGE_PROMPT_OVERHEAD_TOKENS = (PREPROMPT + PENULTIMATE_PROMPT).tokens
-
-
 ###
-### Prompt Prefixen for URL summarization
+###  Various Specialized SubPrompts
 ###
-
-# the PROMPT_PREFIX is prepended to the url content before sending to the language model
-SUMMARIZE_PROMPT_PREFIX = SubPrompt("Provide a detailed summary of the following web content, including what type of content it is (e.g. news article, essay, technical report, blog post, product documentation, content marketing, etc). If the content looks like an error message, respond 'content unavailable'. If there is anything controversial please highlight the controversy. If there is something surprising, unique, or clever, please highlight that as well:")
-
-# prompt prefix for Github Readme files
-GITHUB_PROMPT_PREFIX = SubPrompt("Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:")
-
-
-
 MAX_MESSAGE_SP_TOKENS   = 300
-
-
-
-msg_response_limits = gpt3.CompletionLimits(min_prompt     = MESSAGE_PROMPT_OVERHEAD_TOKENS,
-                                            min_completion = 200,
-                                            max_completion = 400)
-
-msg_response_task   = gpt3.CompletionTask(limits      = msg_response_limits,
-                                          temperature = 0.66)
-
-
-url_summary_limits = gpt3.CompletionLimits(min_prompt     = 40,
-                                           min_completion = 300,
-                                           max_completion = 600)
-
-url_summary_task   = gpt3.CompletionTask(limits      = url_summary_limits,
-                                         temperature = 0.2)
-
-
-msg_summary_limits = gpt3.CompletionLimits(min_prompt     = 400,
-                                           min_completion = 200,
-                                           max_completion = 600)
-
-msg_summary_task   = gpt3.CompletionTask(limits      = msg_summary_limits,
-                                         temperature = 0.05)
-
-
-
-
-## Embedding Config
-ST_MODEL_NAME   =  'multi-qa-mpnet-base-dot-v1'
-st_model        =  SentenceTransformer(ST_MODEL_NAME)
-
-
-
-    
-class  Context():
-    """
-    A context for assembling a large prompt context from recent user message subprompts
-    """
-    def __init__(self) -> "Context":
-        self.tokens  = 0
-        self._sub_prompts = []
-
-    def push(self, sub_prompt : SubPrompt) -> bool:
-        """
-        Push sub_prompt onto begining of context.
-        Used to recreate context in reverse order from database select
-        raises MaximumTokenLimit when prompt context limit is exceeded
-        """
-        if self.tokens + MESSAGE_PROMPT_OVERHEAD_TOKENS + sub_prompt.tokens + MAX_MESSAGE_SP_TOKENS > msg_response_task.max_prompt_tokens():
-            raise MaximumTokenLimit
-        self._sub_prompts.insert(0, sub_prompt)
-        self.tokens += sub_prompt.tokens
-        
-    def add(self, sub_prompt : SubPrompt) -> None:
-        # add new prompt to end of sub_prompts
-        self._sub_prompts.append(sub_prompt)
-        self.tokens += sub_prompt.tokens
-        # remove oldest subprompts if over SUBCONTEXT limit
-        while self.tokens + MESSAGE_PROMPT_OVERHEAD_TOKENS + MAX_MESSAGE_SP_TOKENS > msg_response_task.max_prompt_tokens():
-            self.tokens -= self._sub_prompts.pop(0).tokens
-            
-    def sub_prompts(self) -> list[SubPrompt]:
-        return self._sub_prompts
-
-    
-##    
-### maintain a single global context (for now)
-##
-context = Context()
-
-
-
-def build_message_prompt(msg_subprompt : SubPrompt) -> str:
-    """
-    return prompt_text
-    """
-    prompt = PREPROMPT
-    # add previous message context
-    for sub in context.sub_prompts():
-        prompt += sub
-    # add most recent user message after penultimate prompt
-    prompt += PENULTIMATE_PROMPT
-    prompt += msg_subprompt
-    prompt += "MassGPT responded:"
-    return prompt
-
-
-
-
-
 class MessageSubPrompt(SubPrompt):
     """
     SubPrompt Context for a user-generated message
@@ -203,6 +66,193 @@ class SummarySubPrompt(SubPrompt):
         # that is regulated through the msg_summary_limits        
         return SummarySubPrompt(text=text)
 
+
+
+class MassGPTMessagePrompt:
+    """
+    A Factory class to dynamically compose a prompt context for MassGPT message response task
+    """
+
+    # General Prompt Strategy:
+    #  Upon reception of message from a user 999, compose the following prompt
+    #  based on recent messages received from other users:
+
+    PREPROMPT = SubPrompt( \
+"""You are MassGPT, and this is a fun experiment. \
+You were built by Jiggy AI using OpenAI text-davinci-003. \
+Instruction: Different users are sending you messages. \
+They can not communicate with each other directly. \
+Any user to user message must be relayed through you. \
+Pass along any interesting message. \
+Try not to repeat yourself. \
+Ask users questions if you are not sure what to say. \
+If a user expresses interest in a topic discussed here, \
+respond to them based on what you read here. \
+Users have recently said the following to you:""")
+
+
+    #  "User 123 wrote: ABC is the greatest thing ever"
+    #  "User 234 wrote: ABC is cool but i like GGG more"
+    #  "User 345 wrote: DDD is the best ever!"
+    #  etc
+    PENULTIMATE_PROMPT = SubPrompt("Instruction: Respond to the following user message considering the above context and Instruction:")
+
+    FINAL_PROMPT = SubPrompt("MassGPT responded:")
+    
+    #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
+    # Then send resulting llm completion back to user 999 in response to his message
+
+    def __init__(self, task : gpt3.CompletionTask):
+        self.task = task
+        
+    def prompt(self, recent_msgs : MessageResponseSubPrompt, user_msg : MessageSubPrompt) -> str:
+        """
+        return prompt text
+        """
+        prompt = MassGPTMessagePrompt.PREPROMPT
+        final_prompt  = MassGPTMessagePrompt.PENULTIMATE_PROMPT
+        final_prompt += user_msg
+        final_prompt += MassGPTMessagePrompt.FINAL_PROMPT
+
+        available_tokens = self.task.max_prompt_tokens() - (prompt + final_prompt).tokens
+        logger.info(f"available_tokens: {available_tokens}")
+        # assemble list of most recent_messages up to available token limit
+        reversed_subs = []
+        # add previous message context
+        for sub in reversed(recent_msgs):
+            if available_tokens - sub.tokens < 0:
+                break
+            reversed_subs.append(sub)
+            available_tokens -= sub.tokens + 1
+
+        for sub in reversed(reversed_subs):
+            prompt += sub
+            
+        prompt += final_prompt
+        # add most recent user message after penultimate prompt
+        logger.info(f"final prompt tokens: {prompt.tokens}  max{self.task.max_prompt_tokens()}")
+        return prompt
+
+
+
+
+class UrlSummaryPrompt:
+    """
+    A Factory class to dynamically compose a prompt context for URL Summary task
+    """
+    
+    # the PROMPT_PREFIX is prepended to the url content before sending to the language model
+    SUMMARIZE_PROMPT_PREFIX = SubPrompt("Provide a detailed summary of the following web content, including what type of content it is (e.g. news article, essay, technical report, blog post, product documentation, content marketing, etc). If the content looks like an error message, respond 'content unavailable'. If there is anything controversial please highlight the controversy. If there is something surprising, unique, or clever, please highlight that as well:")
+
+    # prompt prefix for Github Readme files
+    GITHUB_PROMPT_PREFIX = SubPrompt("Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:")
+
+
+    def __init__(self, task : gpt3.CompletionTask):
+        self.task = task
+
+    def prefix(self, url):
+        if urllib.parse.urlparse(url).netloc == 'github.com':
+            return UrlSummaryPrompt.GITHUB_PROMPT_PREFIX
+        else:
+            return UrlSummaryPrompt.SUMMARIZE_PROMPT_PREFIX
+        
+    def prompt(self, url: str, url_text : str) -> str:
+        """
+        return prompt text to summary the following url and and url_text.
+        The url is required in able to enable host-specific prompt strategy.
+        For example a different prompt is used to summarize github repo's versus other web sites.
+        """
+        if urllib.parse.urlparse(url).netloc == 'github.com':
+            prefix = UrlSummaryPrompt.GITHUB_PROMPT_PREFIX
+        else:
+            prefix = UrlSummaryPrompt.SUMMARIZE_PROMPT_PREFIX
+        prompt = self.prefix(url) + url_text
+        prompt.truncate(self.task.max_prompt_tokens())
+        return prompt
+
+
+    
+
+
+
+
+
+msg_response_limits = gpt3.CompletionLimits(min_prompt     = 0,
+                                            min_completion = 200,
+                                            max_completion = 400)
+
+msg_response_task   = gpt3.CompletionTask(limits      = msg_response_limits,
+                                          temperature = 0.66)
+
+msg_response_prompt = MassGPTMessagePrompt(task=msg_response_task)
+
+
+
+url_summary_limits = gpt3.CompletionLimits(min_prompt     = 40,
+                                           min_completion = 300,
+                                           max_completion = 600)
+
+url_summary_task   = gpt3.CompletionTask(limits      = url_summary_limits,
+                                         temperature = 0.2)
+
+url_summary_prompt = UrlSummaryPrompt(url_summary_task)
+
+msg_summary_limits = gpt3.CompletionLimits(min_prompt     = 400,
+                                           min_completion = 200,
+                                           max_completion = 600)
+
+msg_summary_task   = gpt3.CompletionTask(limits      = msg_summary_limits,
+                                         temperature = 0.05)
+
+
+
+
+## Embedding Config
+ST_MODEL_NAME   =  'multi-qa-mpnet-base-dot-v1'
+st_model        =  SentenceTransformer(ST_MODEL_NAME)
+
+
+
+    
+class  Context():
+    """
+    A context for assembling a large prompt context from recent user message subprompts
+    """
+    def __init__(self) -> "Context":
+        self.tokens  = 0
+        self._sub_prompts = []
+
+    def push(self, sub_prompt : SubPrompt) -> bool:
+        """
+        Push sub_prompt onto begining of context.
+        Used to recreate context in reverse order from database select
+        raises MaximumTokenLimit when prompt context limit is exceeded
+        """
+        if self.tokens > msg_response_task.max_prompt_tokens():
+            raise MaximumTokenLimit
+        self._sub_prompts.insert(0, sub_prompt)
+        self.tokens += sub_prompt.tokens
+        
+    def add(self, sub_prompt : SubPrompt) -> None:
+        # add new prompt to end of sub_prompts
+        self._sub_prompts.append(sub_prompt)
+        self.tokens += sub_prompt.tokens
+        # remove oldest subprompts if over prompt context limit exceeded
+        while self.tokens > msg_response_task.max_prompt_tokens():
+            self.tokens -= self._sub_prompts.pop(0).tokens
+            
+    def sub_prompts(self) -> list[SubPrompt]:
+        return self._sub_prompts
+
+    
+##    
+### maintain a single global context (for now)
+##
+context = Context()
+
+
+
     
     
 def receive_message(user : User, text : str) -> str:
@@ -232,7 +282,7 @@ def receive_message(user : User, text : str) -> str:
 
     # build final aggregate prompt
     msg_subprompt = MessageSubPrompt.from_msg(msg)
-    prompt = build_message_prompt(msg_subprompt)
+    prompt = msg_response_prompt.prompt(context.sub_prompts(), msg_subprompt)
 
     logger.info(f"final prompt token_count: {prompt.tokens}  chars: {len(prompt.text)}")
 
@@ -279,25 +329,18 @@ def summarize_url(user : User,  url : str) -> str:
         session.add(urltext)
         session.commit()
         session.refresh(urltext)
-        
-    # use different prompt prefix for github versus normal web site
-    if urllib.parse.urlparse(url).netloc == 'github.com':
-        prefix = GITHUB_PROMPT_PREFIX
-    else:
-        prefix = SUMMARIZE_PROMPT_PREFIX
 
-    # compose final prompt and truncate
-    prompt = prefix + text
-    prompt.truncate(url_summary_task.max_prompt_tokens())
-
+    prompt = url_summary_prompt.prompt(url, text)
+    
     completion = url_summary_task.completion(prompt)
+    
     summary_text = str(completion)
     
     with Session(engine) as session:
         url_summary = UrlSummary(text_id = urltext.id,
                                  user_id = user.id,
                                  model   = url_summary_task.model,
-                                 prefix  = prefix.text,
+                                 prefix  = url_summary_prompt.prefix(url).text,
                                  summary = summary_text)
         session.add(url_summary)
         session.commit()
