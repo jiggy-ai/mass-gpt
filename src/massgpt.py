@@ -96,16 +96,14 @@ Users have recently said the following to you:""")
     #  "User 345 wrote: DDD is the best ever!"
     #  etc
     PENULTIMATE_PROMPT = SubPrompt("Instruction: Respond to the following user message considering the above context and Instruction:")
-
-    FINAL_PROMPT = SubPrompt("MassGPT responded:")
-    
     #  "User 999 wrote:  What do folks think about ABC?"   # End of Prompt
+    FINAL_PROMPT = SubPrompt("MassGPT responded:")
     # Then send resulting llm completion back to user 999 in response to his message
 
     def __init__(self, task : gpt3.CompletionTask):
         self.task = task
         
-    def prompt(self, recent_msgs : MessageResponseSubPrompt, user_msg : MessageSubPrompt) -> str:
+    def prompt(self, recent_msgs : MessageResponseSubPrompt, user_msg : MessageSubPrompt) -> SubPrompt:
         """
         return prompt text
         """
@@ -157,7 +155,7 @@ class UrlSummaryPrompt:
         else:
             return UrlSummaryPrompt.SUMMARIZE_PROMPT_PREFIX
         
-    def prompt(self, url: str, url_text : str) -> str:
+    def prompt(self, url: str, url_text : str) -> SubPrompt:
         """
         return prompt text to summary the following url and and url_text.
         The url is required in able to enable host-specific prompt strategy.

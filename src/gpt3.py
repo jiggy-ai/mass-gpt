@@ -26,9 +26,9 @@ def CompletionLimits(min_prompt:int, min_completion:int, max_completion:int):
 RETRY_COUNT = 5
 
 def inference_func(model                 : str,
-                        prompt                : str,                        
-                        temperature           : float,
-                        max_completion_tokens : int) -> str :
+                   prompt                : str,                        
+                   temperature           : float,
+                   max_completion_tokens : int) -> str :
     """
     openai inference func for use as CompletionTask inference_func
     """

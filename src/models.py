@@ -98,7 +98,7 @@ class Completion(SQLModel, table=True):
 
     def __str__(self):
         """
-        return the completion text itself when accesses as a str
+        str(Completion) returns the completion text for convenience
         """
         return self.completion
     

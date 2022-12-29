@@ -64,17 +64,20 @@ class CompletionTask:
         self.model = model
         self.ifunc = inference_func
 
-    def max_prompt_tokens(self):
+    def max_prompt_tokens(self) -> int:
         return self.limits.max_prompt_tokens()
 
+    def limits(self) -> CompletionLimits:
+        return self.limits
+    
     def completion(self, prompt : SubPrompt) -> Completion:
         """
         prompt the model with the specified prompt and return the resulting Completion
-        """
+        """        
         # check prompt limits and return max completion size to request
         # given the size of the prompt and the configured limits
         max_completion = self.limits.max_completion_tokens(prompt)
-
+        
         # perform the completion inference
         response = self.ifunc(model                 = self.model,
                               prompt                = str(prompt),
