@@ -11,7 +11,6 @@ from sqlalchemy import BigInteger
 from pydantic import  BaseModel, ValidationError, validator
 from pydantic import condecimal
 from time import time
-import telegram
 
 timestamp = condecimal(max_digits=14, decimal_places=3)  # unix epoch timestamp decimal to millisecond precision
 
@@ -33,15 +32,6 @@ class User(SQLModel, table=True):
     telegram_is_premium:     Optional[bool]       = Field(description="is_premium from telegram")
     telegram_language_code:  Optional[str]        = Field(description="language_code from telegram")
 
-    @classmethod
-    def from_telegram_user(cls, user: telegram.User) -> "Message":
-        return User(username              = user.username,
-                    first_name            = user.first_name,
-                    last_name             = user.last_name,
-                    telegram_id           = user.id,
-                    telegram_is_bot       = user.is_bot,
-                    telegram_is_premium   = user.is_premium,
-                    telegram_lanuage_code = user.language_code)
     
 
     
@@ -51,13 +41,15 @@ class Message(SQLModel, table=True):
     user_id:          int           = Field(index=True, foreign_key='user.id', description='The user who sent the Message')
     created_at:       timestamp     = Field(index=True, default_factory=time, description='The epoch timestamp when the Message was created.')
     
-    @classmethod
-    def from_telegram_update(cls, update: telegram.Update, user : User) -> "Message":
-        logger.info(f"Message from {user.id} {user.first_name} {user.last_name}: {update.message.text}")
-        return Message(text=update.message.text, user_id=user.id)
     
     
 
+class Response(SQLModel, table=True):
+    id:              int          = Field(primary_key=True, description='Our unique message id')
+    message_id:      int          = Field(index=True, foreign_key="message.id", description="The message to which this is a response.")
+    created_at:      timestamp    = Field(index=True, default_factory=time, description='The epoch timestamp when the Message was created.')
+    completion_id:   int          = Field(foreign_key="completion.id", description="associated completion that provided the response text")
+    
     
 class URL(SQLModel, table=True):
     id:             int       = Field(primary_key=True, description='Unique ID')
@@ -77,30 +69,45 @@ class UrlText(SQLModel, table=True):
 
             
 class UrlSummary(SQLModel, table=True):
-    id:         int       = Field(primary_key=True, description="The summary unique id.")
-    text_id:    int       = Field(index=True, foreign_key="urltext.id", description="The UrlText used to create the summary.")
-    model:      str       = Field(description="The model used to produce this summary.")
-    prefix:     str       = Field(max_length=8192, description="The prompt prefix used to create the summary.")
-    summary:    str       = Field(max_length=8192, description="The summary we got back from the model.")
-    created_at: timestamp = Field(default_factory=time, description='The epoch timestamp when this was created.')
+    id:             int       = Field(primary_key=True, description="The URL Summary unique id.")
+    text_id:        int       = Field(index=True, foreign_key="urltext.id", description="The UrlText used to create the summary.")
+    model:          str       = Field(description="The model used to produce this summary.")
+    prefix:         str       = Field(max_length=8192, description="The prompt prefix used to create the summary.")
+    summary:        str       = Field(max_length=8192, description="The model summary of the UrlText.")
+    created_at:     timestamp = Field(default_factory=time, description='The epoch timestamp when this was created.')
+    #completion_id:   int      = Field(foreign_key="completion.id", description="associated completion that provided the response text")
+
+
+class ChatSummary(SQLModel, table=True):
+    id:            int       = Field(primary_key=True, description="The ChatSummary unique id.")
+    created_at:    timestamp = Field(index=True, default_factory=time, description='The epoch timestamp when this was created.')
+    completion_id: int       = Field(foreign_key="completion.id", description="associated completion that provided the response text")
 
     
-
 class Completion(SQLModel, table=True):
+    """
+    Model prompt + completion
+    A low-level of model prompts+completions.
+    """
     id:          int       = Field(primary_key=True, description="The completion unique id.")
     model:       str       = Field(description="model engine")
-    temperature: int       = Field(description="requested temperature")
+    temperature: int       = Field(description="configured temperature")   # XXX covert to float
     prompt:      str       = Field(max_length=65535, description="The prompt used to generate the completion.")
     completion:  str       = Field(max_length=65535, description="The completion received from the model.")
     created_at:  timestamp = Field(default_factory=time, description='The epoch timestamp when this was created.')
 
-
+    def __str__(self):
+        """
+        str(Completion) returns the completion text for convenience
+        """
+        return self.completion
     
 class EmbeddingSource(str, enum.Enum):
     """
     The source of the text for embedding
     """
     message      = "message"
+    chat_summary = "chat_summary"    
     url_summary  = "url_summary"
     
 
@@ -111,7 +118,7 @@ class Embedding(SQLModel, table=True):
     collection: str             = Field(index=True, description='The name of the collection that holds this vector.')
     source:     EmbeddingSource = Field(sa_column=Column(Enum(EmbeddingSource)),
                                         description='The source of this embedding')
-    source_id:  int             = Field(description='The memo that produced this embedding.')    
+    source_id:  int             = Field(description='The message/chat/url_summary id that produced this embedding.')
     model:      str             = Field(description="The model used to produce this embedding.")    
     vector:     List[float]     = Field(sa_column=Column(ARRAY(Float(24))),
                                         description='The embedding vector.')
