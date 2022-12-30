@@ -16,7 +16,6 @@ from models import *
 from extract import url_to_text
 from subprompt import SubPrompt
 
-from hashlib import md5
 
 ###
 ###  Various Specialized SubPrompts
@@ -31,8 +30,7 @@ class MessageSubPrompt(SubPrompt):
     @classmethod
     def from_msg(cls, msg: Message) -> "SubPrompt":
         # create user message specific subprompt
-        username = md5(str(msg.user_id).encode("utf-8")).hexdigest()[:5]
-        text = f"user-{username} wrote to MassGPT: {msg.text}"
+        text = f"user-{msg.user_id} wrote to MassGPT: {msg.text}"
         return MessageSubPrompt(text=text, max_tokens=MessageSubPrompt.MAX_TOKENS)
             
 
