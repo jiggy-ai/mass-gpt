@@ -55,21 +55,28 @@ class CompletionTask:
     A LLM completion task that shares a particular llm configuration and prompt/completion limit structure. 
     """
     def __init__(self,
-                 limits : CompletionLimits,                 
+                 limits      : CompletionLimits,                 
                  temperature : float,
-                 model  : str,
-                 inference_func) -> "CompletionTask" :
+                 model       : str) -> "CompletionTask" :
+        
         self.limits = limits
         self.temperature = temperature
         self.model = model
-        self.ifunc = inference_func
 
     def max_prompt_tokens(self) -> int:
         return self.limits.max_prompt_tokens()
 
     def limits(self) -> CompletionLimits:
         return self.limits
-    
+
+    def _completion(self,
+                    prompt                : str,                        
+                    max_completion_tokens : int) -> str :
+        """
+        perform the actual completion, returning the completion text string
+        """
+        pass
+
     def completion(self, prompt : SubPrompt) -> Completion:
         """
         prompt the model with the specified prompt and return the resulting Completion
@@ -79,10 +86,8 @@ class CompletionTask:
         max_completion = self.limits.max_completion_tokens(prompt)
         
         # perform the completion inference
-        response = self.ifunc(model                 = self.model,
-                              prompt                = str(prompt),
-                              temperature           = self.temperature,
-                              max_completion_tokens = max_completion) 
+        response = self._completion(prompt                = str(prompt),
+                                    max_completion_tokens = max_completion)
         
         # save Completion object in db
         with Session(engine) as session:

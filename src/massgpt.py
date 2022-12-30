@@ -16,21 +16,24 @@ from models import *
 from extract import url_to_text
 from subprompt import SubPrompt
 
-
+from hashlib import md5
 
 ###
 ###  Various Specialized SubPrompts
 ###
-MAX_MESSAGE_SP_TOKENS   = 300
+
 class MessageSubPrompt(SubPrompt):
     """
     SubPrompt Context for a user-generated message
     """
+    MAX_TOKENS = 300
+    
     @classmethod
     def from_msg(cls, msg: Message) -> "SubPrompt":
         # create user message specific subprompt
-        text = f"User {msg.user_id} wrote to MassGPT: {msg.text}"
-        return MessageSubPrompt(text=text, max_tokens=MAX_MESSAGE_SP_TOKENS)
+        username = md5(str(msg.user_id).encode("utf-8")).hexdigest()[:5]
+        text = f"user-{username} wrote to MassGPT: {msg.text}"
+        return MessageSubPrompt(text=text, max_tokens=MessageSubPrompt.MAX_TOKENS)
             
 
 class MessageResponseSubPrompt(SubPrompt):
@@ -39,7 +42,7 @@ class MessageResponseSubPrompt(SubPrompt):
     """
     @classmethod
     def from_msg_completion(cls, msp: MessageSubPrompt, comp: Completion) -> "SubPrompt":
-        return msp + f"MassGPT responded: {comp.completion}"
+        return msp # + f"MassGPT responded: {comp.completion}"
             
     
     
@@ -68,11 +71,14 @@ class SummarySubPrompt(SubPrompt):
 
 
 
-class MassGPTMessagePrompt:
-    """
-    A Factory class to dynamically compose a prompt context for MassGPT message response task
-    """
 
+
+class MassGPTMessageTask(gpt3.GPT3CompletionTask):
+    """
+    Generated message response completions based on dynamic history of recent messages and most used message
+    """
+    TEMPERATURE = 0.4
+    
     # General Prompt Strategy:
     #  Upon reception of message from a user 999, compose the following prompt
     #  based on recent messages received from other users:
@@ -100,25 +106,36 @@ Users have recently said the following to you:""")
     FINAL_PROMPT = SubPrompt("MassGPT responded:")
     # Then send resulting llm completion back to user 999 in response to his message
 
-    def __init__(self, task : gpt3.CompletionTask):
-        self.task = task
+    def __init__(self) -> "MassGPTMessageTask":
+        limits = gpt3.CompletionLimits(min_prompt     = 0,
+                                       min_completion = 300,
+                                       max_completion = 400)
         
-    def prompt(self, recent_msgs : MessageResponseSubPrompt, user_msg : MessageSubPrompt) -> SubPrompt:
-        """
-        return prompt text
-        """
-        prompt = MassGPTMessagePrompt.PREPROMPT
-        final_prompt  = MassGPTMessagePrompt.PENULTIMATE_PROMPT
-        final_prompt += user_msg
-        final_prompt += MassGPTMessagePrompt.FINAL_PROMPT
+        super(gpt3.GPT3CompletionTask, self).__init__(limits      = limits,
+                                                      temperature = MassGPTMessageTask.TEMPERATURE,
+                                                       model      = 'text-davinci-003')
 
-        available_tokens = self.task.max_prompt_tokens() - (prompt + final_prompt).tokens
+                 
+    def completion(self,
+                   recent_msgs : MessageResponseSubPrompt,
+                   user_msg    : MessageSubPrompt) -> Completion:
+        """
+        return completion for the provided subprompts
+        """
+        prompt = MassGPTMessageTask.PREPROMPT
+        final_prompt  = MassGPTMessageTask.PENULTIMATE_PROMPT
+        final_prompt += user_msg
+        final_prompt += MassGPTMessageTask.FINAL_PROMPT
+
+        logger.info(f"overhead tokens: {(prompt + final_prompt).tokens}")
+        
+        available_tokens = self.max_prompt_tokens() - (prompt + final_prompt).tokens
         logger.info(f"available_tokens: {available_tokens}")
         # assemble list of most recent_messages up to available token limit
         reversed_subs = []
         # add previous message context
         for sub in reversed(recent_msgs):
-            if available_tokens - sub.tokens < 0:
+            if available_tokens - sub.tokens -1 < 0:
                 break
             reversed_subs.append(sub)
             available_tokens -= sub.tokens + 1
@@ -128,13 +145,21 @@ Users have recently said the following to you:""")
             
         prompt += final_prompt
         # add most recent user message after penultimate prompt
-        logger.info(f"final prompt tokens: {prompt.tokens}  max{self.task.max_prompt_tokens()}")
-        return prompt
+        logger.info(f"final prompt tokens: {prompt.tokens}  max{self.max_prompt_tokens()}")
+
+        logger.info(f"final prompt token_count: {prompt.tokens}  chars: {len(prompt.text)}")
+        
+        return super().completion(prompt)
 
 
 
 
-class UrlSummaryPrompt:
+msg_response_task   = MassGPTMessageTask()
+                                          
+
+
+
+class UrlSummaryTask(gpt3.GPT3CompletionTask):
     """
     A Factory class to dynamically compose a prompt context for URL Summary task
     """
@@ -145,64 +170,38 @@ class UrlSummaryPrompt:
     # prompt prefix for Github Readme files
     GITHUB_PROMPT_PREFIX = SubPrompt("Provide a summary of the following github project readme file, including the purpose of the project, what problems it may be used to solve, and anything the author mentions that differentiates this project from others:")
 
+    TEMPERATURE = 0.2
 
-    def __init__(self, task : gpt3.CompletionTask):
-        self.task = task
+    def __init__(self) -> "UrlSummaryTask":
+        limits = gpt3.CompletionLimits(min_prompt     = 40,
+                                       min_completion = 300,
+                                       max_completion = 600)
+        
+        super(gpt3.GPT3CompletionTask, self).__init__(limits      = limits,
+                                                      temperature = UrlSummaryTask.TEMPERATURE,
+                                                       model      = 'text-davinci-003')
 
     def prefix(self, url):
         if urllib.parse.urlparse(url).netloc == 'github.com':
-            return UrlSummaryPrompt.GITHUB_PROMPT_PREFIX
+            return UrlSummaryTask.GITHUB_PROMPT_PREFIX
         else:
-            return UrlSummaryPrompt.SUMMARIZE_PROMPT_PREFIX
-        
-    def prompt(self, url: str, url_text : str) -> SubPrompt:
+            return UrlSummaryTask.SUMMARIZE_PROMPT_PREFIX
+
+
+    def completion(self, url: str, url_text : str) -> Completion:
         """
         return prompt text to summary the following url and and url_text.
         The url is required in able to enable host-specific prompt strategy.
         For example a different prompt is used to summarize github repo's versus other web sites.
         """
-        if urllib.parse.urlparse(url).netloc == 'github.com':
-            prefix = UrlSummaryPrompt.GITHUB_PROMPT_PREFIX
-        else:
-            prefix = UrlSummaryPrompt.SUMMARIZE_PROMPT_PREFIX
         prompt = self.prefix(url) + url_text
-        prompt.truncate(self.task.max_prompt_tokens())
-        return prompt
-
-
-    
+        prompt.truncate(self.max_prompt_tokens())
+        return super().completion(prompt)
 
 
 
 
-
-msg_response_limits = gpt3.CompletionLimits(min_prompt     = 0,
-                                            min_completion = 200,
-                                            max_completion = 400)
-
-msg_response_task   = gpt3.CompletionTask(limits      = msg_response_limits,
-                                          temperature = 0.66)
-
-msg_response_prompt = MassGPTMessagePrompt(task=msg_response_task)
-
-
-
-url_summary_limits = gpt3.CompletionLimits(min_prompt     = 40,
-                                           min_completion = 300,
-                                           max_completion = 600)
-
-url_summary_task   = gpt3.CompletionTask(limits      = url_summary_limits,
-                                         temperature = 0.2)
-
-url_summary_prompt = UrlSummaryPrompt(url_summary_task)
-
-msg_summary_limits = gpt3.CompletionLimits(min_prompt     = 400,
-                                           min_completion = 200,
-                                           max_completion = 600)
-
-msg_summary_task   = gpt3.CompletionTask(limits      = msg_summary_limits,
-                                         temperature = 0.05)
-
+url_summary_task   =  UrlSummaryTask()
 
 
 
@@ -250,7 +249,6 @@ class  Context():
 context = Context()
 
 
-
     
     
 def receive_message(user : User, text : str) -> str:
@@ -280,29 +278,21 @@ def receive_message(user : User, text : str) -> str:
 
     # build final aggregate prompt
     msg_subprompt = MessageSubPrompt.from_msg(msg)
-    prompt = msg_response_prompt.prompt(context.sub_prompts(), msg_subprompt)
-
-    logger.info(f"final prompt token_count: {prompt.tokens}  chars: {len(prompt.text)}")
-
-    # generate the model response completion
-    comp = msg_response_task.completion(prompt)
-    logger.info(comp)
-
-    rsp_text = comp.completion.lstrip()
-    if not rsp_text:
-        return "no response from model, try again"
+    
+    completion = msg_response_task.completion(context.sub_prompts(), msg_subprompt)
+    logger.info(str(completion))
     
     # add the new user message to the global shared context
-    rsp_subprompt = MessageResponseSubPrompt.from_msg_completion(msg_subprompt, comp)
+    rsp_subprompt = MessageResponseSubPrompt.from_msg_completion(msg_subprompt, completion)
     context.add(rsp_subprompt)
 
     # save response to database
     with Session(engine) as session:    
          session.add(Response(message_id=msg.id,
-                              completion_id=comp.id))
+                              completion_id=completion.id))
          session.commit()
          
-    return rsp_text
+    return str(completion)
 
     
 
@@ -314,7 +304,6 @@ def summarize_url(user : User,  url : str) -> str:
     """
     # check if message contains a URL
     # if so extract and summarize the contents
-
     text = url_to_text(url)
     with Session(engine) as session:
         db_url = URL(url=url, user_id = user.id)
@@ -328,17 +317,15 @@ def summarize_url(user : User,  url : str) -> str:
         session.commit()
         session.refresh(urltext)
 
-    prompt = url_summary_prompt.prompt(url, text)
-    
-    completion = url_summary_task.completion(prompt)
-    
+    completion = url_summary_task.completion(url, text)
+
     summary_text = str(completion)
     
     with Session(engine) as session:
         url_summary = UrlSummary(text_id = urltext.id,
                                  user_id = user.id,
                                  model   = url_summary_task.model,
-                                 prefix  = url_summary_prompt.prefix(url).text,
+                                 prefix  = url_summary_task.prefix(url).text,
                                  summary = summary_text)
         session.add(url_summary)
         session.commit()
@@ -368,9 +355,9 @@ def summarize_url(user : User,  url : str) -> str:
 def current_prompts() -> str:
 
     prompt  = "Current prompt stack:\n\n"
-    prompt += PREPROMPT.text +"\n\n"
+    prompt += MassGPTMessageTask.PREPROMPT.text +"\n\n"
     prompt +=  "[Context as shown by /context]\n\n"
-    prompt +=  PENULTIMATE_PROMPT.text + "\n\n"
+    prompt +=  MassGPTMessageTask.PENULTIMATE_PROMPT.text + "\n\n"
     prompt +=  "[Most recent message from user]"
 
     return prompt
@@ -397,10 +384,13 @@ def current_context(max_len=4096) -> str:
     
     
 def load_context_from_db():
+    last = ""
     logger.info('load_context_from_db')    
     with Session(engine) as session:
         for msg in session.exec(select(Message).order_by(Message.id.desc())):
             msg_subprompt = MessageSubPrompt.from_msg(msg)
+            if msg_subprompt.text == last: continue  # basic dedup
+            last = msg_subprompt.text
             resp = session.exec(select(Response).where(Response.message_id == msg.id)).first()
             if not resp:
                 try:
