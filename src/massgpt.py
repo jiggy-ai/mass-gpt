@@ -111,9 +111,9 @@ Users have recently said the following to you:""")
                                        min_completion = 300,
                                        max_completion = 400)
         
-        super(gpt3.GPT3CompletionTask, self).__init__(limits      = limits,
-                                                      temperature = MassGPTMessageTask.TEMPERATURE,
-                                                       model      = 'text-davinci-003')
+        super().__init__(limits      = limits,
+                         temperature = MassGPTMessageTask.TEMPERATURE,
+                         model      = 'text-davinci-003')
 
                  
     def completion(self,
@@ -177,9 +177,9 @@ class UrlSummaryTask(gpt3.GPT3CompletionTask):
                                        min_completion = 300,
                                        max_completion = 600)
         
-        super(gpt3.GPT3CompletionTask, self).__init__(limits      = limits,
-                                                      temperature = UrlSummaryTask.TEMPERATURE,
-                                                       model      = 'text-davinci-003')
+        super().__init__(limits      = limits,
+                         temperature = UrlSummaryTask.TEMPERATURE,
+                         model      = 'text-davinci-003')
 
     def prefix(self, url):
         if urllib.parse.urlparse(url).netloc == 'github.com':
@@ -287,11 +287,15 @@ def receive_message(user : User, text : str) -> str:
     context.add(rsp_subprompt)
 
     # save response to database
-    with Session(engine) as session:    
-         session.add(Response(message_id=msg.id,
-                              completion_id=completion.id))
-         session.commit()
-         
+    with Session(engine) as session:
+        session.add(completion)
+        session.commit()
+        session.refresh(completion)
+        session.add(Response(message_id=msg.id,
+                             completion_id=completion.id))
+        session.commit()
+        session.refresh(completion)
+        
     return str(completion)
 
     
@@ -322,6 +326,10 @@ def summarize_url(user : User,  url : str) -> str:
     summary_text = str(completion)
     
     with Session(engine) as session:
+        session.add(completion)
+        session.commit()
+        session.refresh(completion)
+        
         url_summary = UrlSummary(text_id = urltext.id,
                                  user_id = user.id,
                                  model   = url_summary_task.model,

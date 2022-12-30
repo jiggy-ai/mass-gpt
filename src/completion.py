@@ -9,7 +9,6 @@ from sqlmodel import Session, select
 from models import Completion
 from subprompt import SubPrompt
 
-from db import engine
 from exceptions import *
 
 
@@ -53,14 +52,15 @@ class CompletionLimits(BaseModel):
 class CompletionTask:
     """
     A LLM completion task that shares a particular llm configuration and prompt/completion limit structure. 
+    This is a base class for a model-specific completion task.  A model-api-specific implemention must
+    at a minimum implement the _completion() method.
+    See gpt3.GPT3CompletionTask for an example implementation.
     """
     def __init__(self,
                  limits      : CompletionLimits,                 
-                 temperature : float,
                  model       : str) -> "CompletionTask" :
         
         self.limits = limits
-        self.temperature = temperature
         self.model = model
 
     def max_prompt_tokens(self) -> int:
@@ -74,6 +74,7 @@ class CompletionTask:
                     max_completion_tokens : int) -> str :
         """
         perform the actual completion, returning the completion text string
+        This should be implemented in a model-api-specific base class. 
         """
         pass
 
@@ -88,14 +89,9 @@ class CompletionTask:
         # perform the completion inference
         response = self._completion(prompt                = str(prompt),
                                     max_completion_tokens = max_completion)
-        
-        # save Completion object in db
-        with Session(engine) as session:
-            completion = Completion(model       = self.model,
-                                    temperature = self.temperature,
-                                    prompt      = str(prompt),
-                                    completion  = response)
-            session.add(completion)
-            session.commit()
-            session.refresh(completion)
+
+        completion = Completion(model       = self.model,
+                                prompt      = str(prompt),
+                                temperature = 0, # XXX  set this as model params?
+                                completion  = response)
         return completion
