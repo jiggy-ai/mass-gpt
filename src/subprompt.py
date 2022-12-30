@@ -8,7 +8,7 @@ import os
 from pydantic import BaseModel, Field
 from tokenizer import token_len
 from typing import Optional
-
+from exceptions import *
 
 
 # have found that marking truncated text as truncated stops the model from trying
@@ -44,6 +44,8 @@ class SubPrompt:
             split_point -= 1
         self.text = self.text[:split_point] + TRUNCATED
         self.tokens = token_len(self.text)
+        if self.tokens > max_tokens:
+            self.truncate(max_tokens*.95)
         
         
     def __init__(self, text: str, max_tokens=None, truncate=False, precise=False, tokens=None) -> "SubPrompt":
