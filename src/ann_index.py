@@ -1,5 +1,8 @@
 import hnswlib
 import psutil
+
+from s3 import  bucket
+
 from loguru import logger
 from sqlmodel import Session, select
 from db import engine
@@ -22,11 +25,20 @@ with Session(engine) as session:
         if embedding.vector is None:
             session.delete(embedding)
             session.commit()
-            continue
-        
+            continue        
         hnsw_index.add_items([embedding.vector], [embedding.id])
         count += 1
         print(embedding.id)
 
 filename = "index-%s-%d.hnsf" % (ST_MODEL_NAME, count)
 hnsw_index.save_index(filename)
+
+objkey = f"massgpt/ann-index/{ST_MODEL_NAME}-{count}.hnsw"
+bucket.upload_file(filename, objkey)
+
+with Session(engine) as session:
+    ix = HnswIndex(collection = ST_MODEL_NAME,
+                   count      = count,
+                   objkey     = objkey)
+    session.add(ix)
+    session.commit()

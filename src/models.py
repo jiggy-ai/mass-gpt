@@ -132,4 +132,13 @@ class Embedding(SQLModel, table=True):
     vector:     List[float]     = Field(sa_column=Column(ARRAY(Float(24))),
                                         description='The embedding vector.')
 
-    
+
+class HnswIndex(SQLModel, table=True):
+
+    id:               int = Field(default=None,
+                                  primary_key=True,
+                                  description='Unique database identifier for a given index')
+    collection:       str = Field(index=True, description='The name of the collection that holds this vector.')
+    count:            int = Field(default=0, description="The number of vectors included in the index.  The number of vectors in the collection at the time of index build.")
+    objkey:           str = Field(description='The index key name in object store')
+    created_at: timestamp = Field(default_factory=time, description='The epoch timestamp when the index was requested to be created.')
