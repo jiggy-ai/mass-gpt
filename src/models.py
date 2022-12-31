@@ -83,6 +83,9 @@ class ChatSummary(SQLModel, table=True):
     created_at:    timestamp = Field(index=True, default_factory=time, description='The epoch timestamp when this was created.')
     completion_id: int       = Field(foreign_key="completion.id", description="associated completion that provided the response text")
 
+
+
+    
     
 class Completion(SQLModel, table=True):
     """
@@ -101,14 +104,20 @@ class Completion(SQLModel, table=True):
         str(Completion) returns the completion text for convenience
         """
         return self.completion
-    
+
+
+
 class EmbeddingSource(str, enum.Enum):
     """
     The source of the text for embedding
     """
-    message      = "message"
-    chat_summary = "chat_summary"    
-    url_summary  = "url_summary"
+    message          = "message"
+    chat_summary     = "chat_summary"    
+    url_summary      = "url_summary"
+    hn_story_summary = "hn_story_summary"
+    hn_story_title   = "hn_story_title"
+
+
     
 
 class Embedding(SQLModel, table=True):
@@ -118,7 +127,7 @@ class Embedding(SQLModel, table=True):
     collection: str             = Field(index=True, description='The name of the collection that holds this vector.')
     source:     EmbeddingSource = Field(sa_column=Column(Enum(EmbeddingSource)),
                                         description='The source of this embedding')
-    source_id:  int             = Field(description='The message/chat/url_summary id that produced this embedding.')
+    source_id:  int             = Field(index=True, description='The message/chat/url_summary id that produced this embedding.')
     model:      str             = Field(description="The model used to produce this embedding.")    
     vector:     List[float]     = Field(sa_column=Column(ARRAY(Float(24))),
                                         description='The embedding vector.')

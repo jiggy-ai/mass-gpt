@@ -40,7 +40,7 @@ class MessageResponseSubPrompt(SubPrompt):
     """
     @classmethod
     def from_msg_completion(cls, msp: MessageSubPrompt, comp: Completion) -> "SubPrompt":
-        return msp # + f"MassGPT responded: {comp.completion}"
+        return msp # + f"MassGPT responded: {comp.completion}"   # leave the model response out for experimentation
             
     
     
@@ -264,11 +264,12 @@ def receive_message(user : User, text : str) -> str:
                 
         # embedding should move to background work queue
         t0 = time()
+        vector =  [float(x) for x in st_model.encode(msg.text)]
         embedding = Embedding(source     = EmbeddingSource.message,
                               source_id  = msg.id,
                               collection = ST_MODEL_NAME,
                               model      = ST_MODEL_NAME,
-                              vector     = st_model.encode(msg.text))
+                              vector     = vector)
         logger.info(f"embedding dt: {time()-t0}")
         session.add(embedding)
         session.commit()
@@ -339,11 +340,12 @@ def summarize_url(user : User,  url : str) -> str:
         
         # embedding should move to background work queue
         t0 = time()
+        vector =  [float(x) for x in st_model.encode(summary_text)]
         embedding = Embedding(source     = EmbeddingSource.url_summary,
                               source_id  = url_summary.id,
                               collection = ST_MODEL_NAME,
                               model      = ST_MODEL_NAME,
-                              vector     = st_model.encode(summary_text))
+                              vector     = vector)
         logger.info(f"embedding dt: {time()-t0}")
         session.add(embedding)
         
