@@ -396,7 +396,10 @@ def load_context_from_db():
     logger.info('load_context_from_db')    
     with Session(engine) as session:
         for msg in session.exec(select(Message).order_by(Message.id.desc())):
-            msg_subprompt = MessageSubPrompt.from_msg(msg)
+            try:
+                msg_subprompt = MessageSubPrompt.from_msg(msg)
+            except:
+                continue  # historic message to big for current limits
             if msg_subprompt.text == last: continue  # basic dedup
             last = msg_subprompt.text
             resp = session.exec(select(Response).where(Response.message_id == msg.id)).first()
