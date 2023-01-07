@@ -15,10 +15,8 @@ passwd  = os.environ['HNSUM_POSTGRES_PASS']
 
 DBURI = 'postgresql+psycopg2://%s:%s@%s:5432/hnsum' % (user, passwd, db_host)
 
-engine = create_engine(DBURI, pool_pre_ping=True, echo=False)
-
 # Create DB Engine
-SQLModel.metadata.create_all(engine)
+engine = create_engine(DBURI, pool_pre_ping=True, echo=False)
 
 
 timestamp = condecimal(max_digits=14, decimal_places=3)
@@ -54,7 +52,23 @@ class StorySummary(SQLModel, table=True):
 
 
 
-def stories(story_ids):
+def stories(story_ids : int) -> HackerNewsStory:
     with Session(engine) as session:
         return session.exec(select(HackerNewsStory).where(HackerNewsStory.id.in_(story_ids))).all()
 
+
+
+def story_text(story : HackerNewsStory) -> str:
+    with Session(engine) as session:
+        storytext = session.exec(select(StoryText).where(StoryText.story_id == story.id)).first()
+        if not storytext:
+            return ""
+        return storytext.text
+
+def story_summary(story : HackerNewsStory) -> str:
+    with Session(engine) as session:
+        storysummary = session.exec(select(StorySummary).where(StorySummary.story_id == story.id)).first()
+        if not storysummary:
+            return ""
+        return storysummary.summary
+    

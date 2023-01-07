@@ -28,12 +28,13 @@ def CompletionLimits(min_prompt:int,
 
 
 
+RETRY_COUNT = 10
 
 class GPT3CompletionTask(completion.CompletionTask):
     """
     An OpenAI GP3-class completion task implemented using OpenAI API
     """
-    RETRY_COUNT = 5
+
     
     def __init__(self,
                  limits      : completion.CompletionLimits,
@@ -73,14 +74,14 @@ class GPT3CompletionTask(completion.CompletionTask):
                                             max_tokens  = max_completion_tokens)
             return resp.choices[0].text
             
-        for i in range(GPT3CompletionTask.RETRY_COUNT):
+        for i in range(RETRY_COUNT):
             try:
                 return completion()
-            except openai.error.ServiceUnavailableError:
-                logger.warning("openai ServiceUnavailableError")
+            except (openai.error.RateLimitError, openai.error.ServiceUnavailableError):
+                logger.warning("openai error")
                 if i == RETRY_COUNT-1:
                     raise
-                sleep((i+1)*.1)
+                sleep(i**1.3)
             except Exception as e:
                 logger.exception("_completion")
                 raise

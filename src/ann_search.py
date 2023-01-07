@@ -44,11 +44,17 @@ def search(query : str):
     for story in stories:
         print(f"{distance(story):.2f}  {story.title}")
 
+    return stories
 
 if __name__ == "__main__":
     search("SBF fraud")
     while(True):
-        search(input("Search: "))
+        stories = search(input("Search: "))
+        for s in stories:
+            print()
+            print(s.title)
+            print(hn_summary_db.story_summary(s))
+            hn_summary_db.story_text(s)
 
 
 

@@ -80,7 +80,7 @@ async def message(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
         else:
             response = massgpt.receive_message(user, text)
         await update.message.reply_text(response)
-    except openai.error.ServiceUnavailableError:
+    except (openai.error.ServiceUnavailableError, openai.error.RateLimitError): 
         await update.message.reply_text("The OpenAI server is overloaded.")
     except ExtractException:
         await update.message.reply_text("Unable to extract text from url.")
@@ -129,7 +129,7 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
             url = extract_url(text)            
             response = massgpt.summarize_url(user, url)
             await update.message.reply_text(response)
-        except openai.error.ServiceUnavailableError:
+        except (openai.error.ServiceUnavailableError, openai.error.RateLimitError):
             await update.message.reply_text("The OpenAI server is overloaded.")
         except ExtractException:
             await update.message.reply_text("Unable to extract text from url.")
