@@ -104,7 +104,7 @@ users = list(range(10))
 from random import choice
 
 
-NUM_MESSAGES = 100 #220
+NUM_MESSAGES = 220
 #NUM_MESSAGES = 150
 
 data = []

@@ -1,0 +1,7 @@
+
+
+
+ gpt-3.5-turbo  precision  93.3%  recall  71.3%	  latency 10.8 s
+ gpt-4          precision 100.0%  recall 100.0%   latency 11.9 s
+
+
