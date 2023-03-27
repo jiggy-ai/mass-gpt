@@ -13,25 +13,25 @@ Copyright (C) 2022 William S. Kish
 """
 
 import os
-from sqlmodel import Session, select
+#from sqlmodel import Session, select
 from loguru import logger
-from pydantic import BaseModel, Field
+#from pydantic import BaseModel, Field
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 import re
 
-import openai
-from db import engine
-from models import *
-from exceptions import *
+#import openai
+#from db import engine
+#from models import *
+#from exceptions import *
 
-import massgpt
+#import massgpt
 
 
 # the bot app
 bot = ApplicationBuilder().token(os.environ['MASSGPT_TELEGRAM_API_TOKEN']).build()
 
-
+'''
 def extract_url(text: str):
     try:
         return re.search("(?P<url>https?://[^\s]+)", text).group("url")
@@ -93,7 +93,7 @@ async def message(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("An exceptional condition occured.")
         
 
-bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
+#bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
 
 
 
@@ -140,8 +140,16 @@ async def command(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text("Send me a message and I will assemble a collection of recent or related messages into a GPT prompt context and prompt your message against that dynamic context, sending you the GPT response.  Send /context to see the current prompt context. Send '/url <url>' to add a summary of the url to the context. Consider this to be a public chat and please maintain a kind and curious standard.")
 
     
-bot.add_handler(MessageHandler(filters.COMMAND, command))
+#bot.add_handler(MessageHandler(filters.COMMAND, command))
 
+'''
+
+async def redirect(update: Update, tgram_context: ContextTypes.DEFAULT_TYPE) -> None:
+     await update.message.reply_text("MassGPT has been discontinued.  Please check out @Jing_ai_bot for a multi-purpose ChatGPT bot")
+
+    
+bot.add_handler(MessageHandler(filters.COMMAND, redirect))
+bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, redirect))
 
 logger.info("run_polling")
 bot.run_polling()
