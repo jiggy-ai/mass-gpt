@@ -2,7 +2,7 @@
 <img src="https://github.com/jiggy-ai/mass-gpt/blob/main/MassGPT.jpg" alt="MassGPTBot" width=256> 
 </p>
 
-**MassGPT** (https://t.me/MassGPTbot) is an open source Telegram bot that interacts with users by responding to messages via a GPT3.5 (davinci-003) completion that is conditioned by a shared sub-prompt context of all recent user messages.
+**MassGPT** is an experimental open source Telegram bot that interacts with users by responding to messages via a GPT3.5 (davinci-003) completion that is conditioned by a shared sub-prompt context of all recent user messages.
 
 Message the MassGPT Telegram bot directly, and it will respond back to you taking into account the content of relevant messages it has received from others.  Users are assigned a numeric user id that does not leak any Telegram user info.  The messages you send are not private as they are accessible to other users via the bot or via the /context command.  
 
